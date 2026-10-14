@@ -39,6 +39,7 @@ async def ask_llm(question: str) -> dict:
     return {
         "answer": response.choices[0].message.content or "",
         "model": response.model,
+        "provider": "groq",  # Day 10 adds "gemini" as a fallback
         "prompt_tokens": usage.prompt_tokens if usage else 0,
         "completion_tokens": usage.completion_tokens if usage else 0,
         "latency_ms": round(latency_ms, 2),

@@ -7,18 +7,7 @@ from services.llm import LLMError
 client = TestClient(app)
 
 
-def test_chat_success(monkeypatch):
-    # Fake LLM function: returns a fixed answer, never calls Groq.
-    async def fake_ask_llm(question):
-        return {
-            "answer": "RAG means Retrieval-Augmented Generation.",
-            "model": "fake-model",
-            "prompt_tokens": 5,
-            "completion_tokens": 7,
-            "latency_ms": 12.3,
-        }
-
-    monkeypatch.setattr(api.main, "ask_llm", fake_ask_llm)
+def test_chat_success(fake_llm):
     res = client.post("/chat", json={"question": "What is RAG?"})
 
     assert res.status_code == 200

@@ -40,7 +40,12 @@ FastAPI · Postgres (Neon) + pgvector · Redis (Upstash) · Groq (main) + Gemini
 - Folders: `api/` (routes), `services/` (business logic, e.g. LLM calls), `models/` (Pydantic schemas), `tests/`
 - `.env` keys: GROQ_API_KEY, GEMINI_API_KEY, GROQ_MODEL (=openai/gpt-oss-20b), DATABASE_URL, REDIS_URL
 - Run server: `.venv\Scripts\activate` then `uvicorn api.main:app --reload` → http://127.0.0.1:8000/docs
-- Run tests: `python -m pytest -v`
+- Run tests: `python -m pytest -v` (tests use in-memory SQLite via tests/conftest.py, never Neon)
+- DB migrations: `alembic upgrade head` (reads DATABASE_URL from .env). New column → edit models/, then
+  `alembic revision --autogenerate -m "..."`, review the file, `alembic upgrade head`.
+- DB driver: SQLAlchemy 2.x + psycopg v3 (sync). Chosen because it accepts Neon's `?sslmode=require`
+  as-is (asyncpg rejects it) and avoids psycopg-async's Windows event-loop issue.
+- Prices for cost_usd live in `config.py` (PRICES_PER_MILLION).
 
 ## Rules
 - **NEVER print, read aloud, or commit the contents of `.env`.**
@@ -54,8 +59,8 @@ FastAPI · Postgres (Neon) + pgvector · Redis (Upstash) · Groq (main) + Gemini
 
 ## Progress
 - [x] Day 1 – Setup + GET /health
-- [x] Day 2 – POST /chat → Groq (services/llm.py, models/schemas.py, tests/test_chat.py)
-- [ ] Day 3 – Neon + Alembic + call logging
+- [x] Day 2 – POST /chat → Groq (services/llm.py, models/schemas.py, tests/test_chat.py) — committed, works in /docs
+- [x] Day 3 – Neon + Alembic + call logging (psycopg v3 sync driver, `calls` table, cost from config.py, saved in a background task)
 - [ ] Day 4 – Exact cache (Redis)
 - [ ] Days 5–7 – Semantic cache
 - [ ] Days 8–9 – API keys + token budgets
