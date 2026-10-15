@@ -6,6 +6,8 @@ import os
 
 from dotenv import load_dotenv
 from redis.asyncio import Redis
+from redis.asyncio.retry import Retry
+from redis.backoff import NoBackoff
 
 import config
 
@@ -19,8 +21,30 @@ def _get_redis() -> Redis | None:
     # Connect only when first needed; no REDIS_URL means "no cache" (not an error).
     global _redis
     if _redis is None and os.getenv("REDIS_URL"):
-        _redis = Redis.from_url(os.environ["REDIS_URL"], decode_responses=True)
+        _redis = Redis.from_url(
+            os.environ["REDIS_URL"],
+            decode_responses=True,
+            socket_keepalive=True,  # TCP keepalive: idle connections are less likely to be dropped
+            health_check_interval=30,  # after 30s idle, check the connection before using it
+            retry=Retry(NoBackoff(), 1),  # a dead connection: reconnect and retry ONCE, immediately
+        )
     return _redis
+
+
+async def _within_timeout(coro):
+    """Like asyncio.wait_for, but a timeout does NOT cancel the work. A reconnect that is still
+    in progress keeps going in the background, so the NEXT request finds a working connection."""
+    task = asyncio.ensure_future(coro)
+    task.add_done_callback(lambda t: t.cancelled() or t.exception())  # mark errors as "seen"
+    return await asyncio.wait_for(asyncio.shield(task), config.REDIS_TIMEOUT_SECONDS)
+
+
+async def warm_up() -> None:
+    """Open the Redis connection now. A brand-new connection takes ~3s, far over our 0.5s limit,
+    and a timeout cancels the connect, so without this the first requests could never get a cache."""
+    client = _get_redis()
+    if client is not None:
+        await asyncio.wait_for(client.ping(), 15)
 
 
 def normalize(question: str) -> str:
@@ -40,7 +64,7 @@ async def get_cached(question: str, model: str) -> dict | None:
     if client is None:
         return None
     try:
-        raw = await asyncio.wait_for(client.get(make_key(question, model)), config.REDIS_TIMEOUT_SECONDS)
+        raw = await _within_timeout(client.get(make_key(question, model)))
     except Exception as e:  # down, slow (TimeoutError), bad URL... never break /chat
         logger.warning("Redis read failed, skipping cache: %r", e)
         return None
@@ -53,9 +77,8 @@ async def set_cached(question: str, model: str, result: dict) -> None:
     if client is None:
         return
     try:
-        await asyncio.wait_for(
-            client.set(make_key(question, model), json.dumps(result), ex=config.CACHE_TTL_SECONDS),
-            config.REDIS_TIMEOUT_SECONDS,
+        await _within_timeout(
+            client.set(make_key(question, model), json.dumps(result), ex=config.CACHE_TTL_SECONDS)
         )
     except Exception as e:
         logger.warning("Redis write failed, answer not cached: %r", e)

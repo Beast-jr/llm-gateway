@@ -1,11 +1,37 @@
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 
 from models.schemas import ChatRequest, ChatResponse
+from services import cache, db, embeddings
 from services.call_log import save_call
 from services.gateway import answer_question, remember_answer
 from services.llm import LLMError
 
-app = FastAPI(title="LLM Gateway")
+logging.basicConfig(level=logging.INFO)  # so our timing lines show up in the server terminal
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Runs once when the server starts: load the model and open the DB + Redis connections
+    # (all three are slow the first time). If one fails, the server still starts and that
+    # part is just skipped, like any other failure.
+    steps = {
+        "embedding model": embeddings.warm_up(),
+        "database": asyncio.to_thread(db.warm_up),
+        "redis": cache.warm_up(),
+    }
+    results = await asyncio.gather(*steps.values(), return_exceptions=True)
+    for name, result in zip(steps, results):
+        if isinstance(result, Exception):
+            logger.error("Could not warm up %s: %r", name, result)
+    yield
+
+
+app = FastAPI(title="LLM Gateway", lifespan=lifespan)
 
 @app.get("/health")
 def health():

@@ -13,3 +13,7 @@ REDIS_TIMEOUT_SECONDS = 0.5  # if Redis takes longer than this, skip the cache a
 EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 EMBEDDING_DIM = 384  # bge-small makes vectors of 384 numbers; must match the DB column
 EMBEDDING_CACHE_DIR = ".cache/fastembed"  # where the downloaded model is kept (git-ignored)
+
+# Semantic cache: lookup
+SEMANTIC_CUTOFF = 0.90  # similarity needed to reuse an answer (Day 7 tunes this on 20 pairs)
+SEMANTIC_TIMEOUT_SECONDS = 1.0  # embed + DB lookup together; if slower, skip it and ask Groq

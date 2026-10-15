@@ -18,3 +18,5 @@ class ChatResponse(BaseModel):
     completion_tokens: int
     latency_ms: float
     cache_hit: bool
+    cache_type: str | None = None  # "exact", "semantic", or null on a miss
+    similarity: float | None = None  # how close the matched question was (semantic hits only)

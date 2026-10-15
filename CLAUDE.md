@@ -71,7 +71,10 @@ FastAPI · Postgres (Neon) + pgvector · Redis (Upstash) · Groq (main) + Gemini
 - [x] Day 5 – Semantic cache part 1: services/embeddings.py (fastembed, BAAI/bge-small-en-v1.5, 384 dims),
   `semantic_cache` table + HNSW cosine index (migration 0003), saved in background on a miss
   (gateway.remember_answer), scripts/similarity_check.py
-- [ ] Day 6 – Semantic cache part 2: lookup by similarity
+  Days 4–5 committed; semantic_cache has 3 rows in Neon.
+- [ ] Day 6 – Semantic cache part 2: lookup by similarity (IN PROGRESS: exact → semantic → Groq in gateway.py,
+  SEMANTIC_CUTOFF=0.90 + 1s time limit in config.py, cache_type/similarity columns via migration 0004,
+  scripts/semantic_demo.py)
 - [ ] Day 7 – Semantic cache part 3: tune cutoff on 20 question pairs
 - [ ] Days 8–9 – API keys + token budgets
 - [ ] Day 10 – Groq → Gemini fallback
@@ -80,6 +83,10 @@ FastAPI · Postgres (Neon) + pgvector · Redis (Upstash) · Groq (main) + Gemini
 - [ ] Days 13–14 – Deploy, Locust, README
 
 Notes / numbers to remember:
+- Day 6 latency: from India, Neon (us-east-2) and Upstash are each ~250ms per round trip; a NEW connection ~3s.
+  Fixes: warm-up of model+DB+Redis at startup, no pool_pre_ping, AUTOCOMMIT read for the lookup (DB lookup ~990 → ~260ms).
+  Locally an exact hit ≈ 270ms, a semantic hit ≈ 540ms: that is distance, not code. Take README numbers from the DEPLOYED
+  service (Render Ohio, next to Neon). A cancelled (timed-out) Redis connect never finishes, so cold Redis = no cache.
 - Day 4: exact cache 1954ms miss → 22ms hit.
 - Day 5 similarity (bge-small): paraphrases 0.91–0.95; related-but-different 0.47–0.78; unrelated 0.32–0.52.
   Acronym vs full name ("RAG" vs "retrieval augmented generation") only 0.50 — the model doesn't know the acronym.

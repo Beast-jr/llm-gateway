@@ -22,4 +22,6 @@ class Call(Base):
     latency_ms: Mapped[float]
     cost_usd: Mapped[float]
     cache_hit: Mapped[bool] = mapped_column(default=False, server_default=false())
+    cache_type: Mapped[str | None] = mapped_column(String(20))  # "exact", "semantic" or None (miss)
+    similarity: Mapped[float | None]  # only set on a semantic hit
     # Later days add new columns here (+ a new Alembic migration).

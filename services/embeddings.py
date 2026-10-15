@@ -30,6 +30,11 @@ def embed_many(texts: list[str]) -> list[list[float]]:
     return vectors.tolist()
 
 
+async def warm_up() -> None:
+    """Load the model now (at server start) so the first real request isn't slow."""
+    await asyncio.to_thread(_get_model)
+
+
 async def embed(text: str) -> list[float]:
     """Embed one text in a worker thread, so the server keeps handling other requests meanwhile."""
     vectors = await asyncio.to_thread(embed_many, [text])

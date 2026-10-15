@@ -64,6 +64,27 @@ def fake_embedder(monkeypatch):
     monkeypatch.setattr(services.embeddings, "embed", fake_embed)
 
 
+@pytest.fixture(autouse=True)
+def fake_lookup(monkeypatch):
+    """SQLite has no pgvector, so the semantic lookup is faked. Default: nothing similar found.
+
+    Tests set fake_lookup.match to a dict like {"answer": "...", "similarity": 0.95}.
+    fake_lookup.calls counts how often it ran.
+    """
+    class FakeLookup:
+        match = None
+        calls = 0
+
+    def fake_find_closest(vector, model):
+        FakeLookup.calls += 1
+        return FakeLookup.match
+
+    FakeLookup.calls = 0
+    FakeLookup.match = None
+    monkeypatch.setattr(services.semantic_cache, "find_closest", fake_find_closest)
+    return FakeLookup
+
+
 @pytest.fixture
 def fake_llm(monkeypatch):
     """Replace the real Groq call with a fake one. fake_llm.calls counts how often it ran."""
