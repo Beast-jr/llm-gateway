@@ -3,9 +3,21 @@
 # and edit these numbers if Groq changes them.
 PRICES_PER_MILLION = {
     "openai/gpt-oss-20b": {"input": 0.075, "output": 0.30},
+    # PLACEHOLDER: unverified list price for the default Gemini model. Check https://ai.google.dev/pricing
+    # and fix it (the free tier costs nothing, but this shows what the paid tier would charge).
+    "gemini-2.5-flash-lite": {"input": 0.10, "output": 0.40},
 }
 
 # LLM answers
+# Groq is tried first. Gemini answers only when Groq fails (error, can't connect, or too slow).
+GROQ_CONNECT_TIMEOUT_SECONDS = 3  # can't even connect to Groq within this -> switch to Gemini
+GROQ_TOTAL_TIMEOUT_SECONDS = 25  # generous: a healthy 7s answer is fine; only a hung request is cut off
+GEMINI_TIMEOUT_SECONDS = 25
+# Default Gemini model. UNVERIFIED guess: run `python -m scripts.list_gemini_models`, then set GEMINI_MODEL in .env.
+GEMINI_MODEL = "gemini-2.5-flash-lite"
+# Circuit breaker: after this many Groq failures in a row, skip Groq for the cooldown and use Gemini directly.
+BREAKER_FAILURES = 3
+BREAKER_COOLDOWN_SECONDS = 60
 MAX_OUTPUT_TOKENS = 4096  # longest answer we allow. You only pay for tokens actually produced; this is a ceiling.
 # (gpt-oss is a "thinking" model: its hidden reasoning tokens count too, so 2048 was cutting real answers off.)
 

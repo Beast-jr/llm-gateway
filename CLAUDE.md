@@ -86,12 +86,22 @@ FastAPI · Postgres (Neon) + pgvector · Redis (Upstash) · Groq (main) + Gemini
   per-user cache scope via CACHE_SCOPE, user_id on calls + semantic_cache, 60s in-memory key cache, scripts/create_key.py
 - [ ] Day 9 – Daily token budgets (IN PROGRESS: services/budget.py, Redis counter budget:{user_id}:{UTC date} with 48h TTL, 429 + Retry-After
   before Groq, cache hits free, response has tokens_used_today + daily_budget, fail OPEN if Redis is down)
-- [ ] Day 10 – Groq → Gemini fallback
+- [ ] Day 10 – Groq → Gemini fallback (IN PROGRESS: services/gemini.py (google-genai), fallback + circuit breaker in gateway.py/services/breaker.py,
+  fallback_reason column (migration 0006), provider + fallback_reason in the response)
 - [ ] Day 11 – GET /stats
 - [ ] Day 12 – Tests + CI (80%+ coverage)
 - [ ] Days 13–14 – Deploy, Locust, README
 
 Notes / numbers to remember:
+- Day 10 fallback: gateway._ask_with_fallback(). Groq first; Gemini only on a Groq error / no connection in 3s / no answer in 25s
+  (GROQ_* timeouts in config.py; Groq SDK max_retries=0 so there are no hidden retries). A long but healthy answer never triggers it.
+  Circuit breaker (services/breaker.py, in memory): 3 Groq failures in a row -> skip Groq 60s (fallback_reason "circuit_open"), then try again;
+  a failure right after the cooldown re-opens it at once. Both fail -> 502 "Both providers failed. Groq: <reason>. Gemini: <error>".
+  Response: provider = groq | gemini | cache (exact hits now say "cache" too), fallback_reason, logged in calls.fallback_reason (migration 0006).
+  Gemini answers are cached/counted like Groq ones, and semantic rows are stored under the PRIMARY (Groq) model name so lookups find them.
+  GEMINI_API_KEY in .env was EMPTY on Day 10, so services/gemini.py was only tested with fakes. Default model gemini-2.5-flash-lite is an
+  unverified guess: run `python -m scripts.list_gemini_models`, then set GEMINI_MODEL in .env. The Gemini price in config.py is a placeholder.
+  Tests: autouse fake Gemini ("down" unless fake_gemini.working = True) and an autouse breaker reset + fake clock in conftest.
 - Day 9 fixes: (1) budget counter read/write use BUDGET_TIMEOUT_SECONDS (4s), longer than the cache's 0.5s, because a slow read must not
   silently skip the check; free cache hits don't wait for the counter (tokens_used_today may be null there). Still fail OPEN if Redis is down.
   (2) Groq answers cut off by the length limit (finish_reason "length") come back with truncated=true and are NEVER saved to Redis or

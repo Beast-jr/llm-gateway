@@ -3,8 +3,9 @@ import logging
 import time
 
 import config
-from services import budget, cache, embeddings, match_guard, semantic_cache
-from services.llm import ask_llm, get_model
+from services import breaker, budget, cache, embeddings, match_guard, semantic_cache
+from services.gemini import ask_gemini
+from services.llm import LLMError, ask_llm, get_model
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,43 @@ def _is_reusable(question: str, match: dict | None) -> bool:
         logger.info("Semantic match %.3f blocked by guard (%s): %r vs %r",
                     match["similarity"], reason, question, match["question"])
     return reason is None
+
+
+def _short(text: object, limit: int = 200) -> str:
+    text = str(text)
+    return text if len(text) <= limit else text[:limit] + "..."
+
+
+async def _ask_with_fallback(question: str) -> dict:
+    """Groq first. Gemini ONLY if Groq fails, can't connect, or hangs; never just because an answer is long.
+
+    After BREAKER_FAILURES Groq failures in a row, Groq is skipped for a while (see services/breaker.py).
+    Raises LLMError if both providers fail (the route turns that into a 502).
+    """
+    reason = None
+    if breaker.groq_breaker.is_open():
+        reason = "circuit_open"
+    else:
+        try:
+            result = await asyncio.wait_for(ask_llm(question), config.GROQ_TOTAL_TIMEOUT_SECONDS)
+        except TimeoutError:
+            reason = "groq_timeout"
+        except LLMError as e:
+            reason = e.reason
+        except Exception:  # a bug or surprise inside the Groq call must not take the whole service down
+            logger.exception("Unexpected error while calling Groq")
+            reason = "groq_error"
+        else:
+            breaker.groq_breaker.record_success()
+            return {**result, "fallback_reason": None}
+        breaker.groq_breaker.record_failure()
+
+    logger.warning("Groq not used (%s), asking Gemini instead", reason)
+    try:
+        result = await ask_gemini(question)
+    except Exception as e:
+        raise LLMError(f"Both providers failed. Groq: {reason}. Gemini: {_short(e)}", "both_failed") from e
+    return {**result, "fallback_reason": reason}
 
 
 async def answer_question(question: str, use_semantic: bool = True, user_id: int | None = None,
@@ -96,6 +134,8 @@ async def answer_question(question: str, use_semantic: bool = True, user_id: int
             "completion_tokens": 0,
             "latency_ms": elapsed_ms(),  # real lookup time
             "cache_hit": True,
+            "provider": "cache",  # nobody was asked; the model field still names who first wrote the answer
+            "fallback_reason": None,
             "cache_type": "exact",
             "similarity": None,
             "matched_question": None,
@@ -117,6 +157,7 @@ async def answer_question(question: str, use_semantic: bool = True, user_id: int
             "answer": match["answer"],
             "model": model,
             "provider": "cache",  # nobody was asked; the saved answer came from our cache
+            "fallback_reason": None,
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "latency_ms": elapsed_ms(),
@@ -134,9 +175,9 @@ async def answer_question(question: str, use_semantic: bool = True, user_id: int
     if daily_budget is not None:
         budget.check(used, daily_budget)
 
-    # Ask the LLM (raises LLMError on failure -> route returns 502), then save the answer and count the tokens.
-    # We only know the tokens AFTER the answer, so one request can go a little over the budget.
-    result = await ask_llm(question)
+    # Ask the LLM (Groq, or Gemini if Groq is down; LLMError if both fail -> route returns 502), then save the
+    # answer and count the tokens. We only know the tokens AFTER the answer, so one request can go a little over.
+    result = await _ask_with_fallback(question)
     tokens = result["prompt_tokens"] + result["completion_tokens"]
     truncated = bool(result.get("truncated"))
     if truncated:
@@ -176,4 +217,5 @@ async def remember_answer(question: str, result: dict, user_id: int | None = Non
         }, _cache_scope(user_id))
         return
     # Fresh LLM answer: store it with its embedding so similar questions can match it.
-    await semantic_cache.save_entry(question, result, result.get("_vector"), user_id, _lookup_user_id(user_id))
+    await semantic_cache.save_entry(question, result, result.get("_vector"), user_id, _lookup_user_id(user_id),
+                                    model=get_model())  # same namespace the lookup uses, whoever answered

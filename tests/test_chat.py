@@ -32,4 +32,5 @@ def test_chat_groq_failure_returns_502(monkeypatch):
     res = client.post("/chat", json={"question": "Hello?"})
 
     assert res.status_code == 502
-    assert "Groq request failed" in res.json()["detail"]
+    assert "Both providers failed" in res.json()["detail"]  # Gemini is down too (conftest default)
+    assert "Gemini" in res.json()["detail"]

@@ -11,13 +11,13 @@ from services.db import get_session, retry_once_if_dropped
 logger = logging.getLogger(__name__)
 
 
-def _insert(question: str, vector: list[float], result: dict, user_id: int | None) -> None:
+def _insert(question: str, vector: list[float], result: dict, user_id: int | None, model: str) -> None:
     with get_session() as session:
         session.add(SemanticCacheEntry(
             question=question,
             embedding=vector,
             answer=result["answer"],
-            model=result["model"],
+            model=model,
             prompt_tokens=result["prompt_tokens"],
             completion_tokens=result["completion_tokens"],
             user_id=user_id,
@@ -60,21 +60,25 @@ def find_closest(vector: list[float], model: str, user_id: int | None = None) ->
 
 
 async def save_entry(question: str, result: dict, vector: list[float] | None = None,
-                     user_id: int | None = None, lookup_user_id: int | None = None) -> None:
+                     user_id: int | None = None, lookup_user_id: int | None = None,
+                     model: str | None = None) -> None:
     """Store a question with its answer. Pass the vector if we already have it. Never raises.
 
     user_id = the owner stored on the row. lookup_user_id = whose rows count as duplicates
     (the owner when scope is per_user, None when shared).
+    model = the cache namespace to store under (the primary model's name, so lookups find answers
+    from ANY provider). Defaults to the model that wrote the answer.
     """
     try:
+        model = model or result["model"]
         if vector is None:
             vector = await embeddings.embed(question)
         # Skip near-duplicates. Checked here (in the background, so it costs the user nothing),
         # because the request's own lookup may have timed out and then knows nothing.
-        closest = await asyncio.to_thread(find_closest, vector, result["model"], lookup_user_id)
+        closest = await asyncio.to_thread(find_closest, vector, model, lookup_user_id)
         if (closest is not None and closest["similarity"] >= config.SEMANTIC_DUPLICATE_SIMILARITY
                 and match_guard.check_numbers(question, closest["question"]) is None):
             return
-        await asyncio.to_thread(retry_once_if_dropped, lambda: _insert(question, vector, result, user_id))  # off the main thread
+        await asyncio.to_thread(retry_once_if_dropped, lambda: _insert(question, vector, result, user_id, model))  # off the main thread
     except Exception:
         logger.exception("Could not save to semantic cache (the user still got their answer)")

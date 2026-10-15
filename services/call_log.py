@@ -36,6 +36,7 @@ def save_call(question: str, result: dict, user_id: int | None = None) -> None:
                 cache_hit=result["cache_hit"],  # on a hit, tokens are 0 so cost is 0 too
                 cache_type=result.get("cache_type"),
                 similarity=result.get("similarity"),
+                fallback_reason=result.get("fallback_reason"),
                 user_id=user_id,
             ))
             session.commit()

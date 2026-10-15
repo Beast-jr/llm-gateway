@@ -9,6 +9,7 @@ import models.call  # noqa: F401  (registers the tables)
 import models.semantic_cache  # noqa: F401
 import models.user  # noqa: F401
 import services.auth
+import services.breaker
 import services.cache
 import services.call_log
 import services.embeddings
@@ -17,6 +18,7 @@ import services.semantic_cache
 from api.main import app
 from services.auth import AuthUser, current_user
 from services.db import Base
+from services.llm import LLMError
 
 FAKE_RESULT = {
     "answer": "RAG means Retrieval-Augmented Generation.",
@@ -100,6 +102,46 @@ def fake_lookup(monkeypatch):
     FakeLookup.match = None
     monkeypatch.setattr(services.semantic_cache, "find_closest", fake_find_closest)
     return FakeLookup
+
+
+FAKE_GEMINI_RESULT = {
+    "answer": "Gemini says: RAG means Retrieval-Augmented Generation.",
+    "model": "gemini-2.5-flash-lite",
+    "provider": "gemini",
+    "prompt_tokens": 6,
+    "completion_tokens": 8,
+    "latency_ms": 20.0,
+    "truncated": False,
+}
+
+
+@pytest.fixture(autouse=True)
+def fake_gemini(monkeypatch):
+    """Gemini never makes a real call in tests. By default it is 'down'; a test sets fake_gemini.working = True."""
+    class FakeGemini:
+        calls = 0
+        working = False
+
+    async def fake_ask_gemini(question):
+        FakeGemini.calls += 1
+        if not FakeGemini.working:
+            raise LLMError("Gemini is not available in this test", "gemini_error_503")
+        return dict(FAKE_GEMINI_RESULT)
+
+    monkeypatch.setattr(services.gateway, "ask_gemini", fake_ask_gemini)
+    return FakeGemini
+
+
+@pytest.fixture(autouse=True)
+def breaker_clock(monkeypatch):
+    """Every test starts with a closed circuit breaker and a clock the test can move by hand."""
+    class BreakerClock:
+        now = 1000.0
+
+    monkeypatch.setattr(services.breaker, "_now", lambda: BreakerClock.now)
+    services.breaker.groq_breaker.record_success()
+    yield BreakerClock
+    services.breaker.groq_breaker.record_success()
 
 
 @pytest.fixture

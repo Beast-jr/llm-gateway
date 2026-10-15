@@ -24,5 +24,6 @@ class Call(Base):
     cache_hit: Mapped[bool] = mapped_column(default=False, server_default=false())
     cache_type: Mapped[str | None] = mapped_column(String(20))  # "exact", "semantic" or None (miss)
     similarity: Mapped[float | None]  # nearest saved question's score (semantic hit, or near-miss); empty if none
+    fallback_reason: Mapped[str | None] = mapped_column(String(50))  # why Groq was skipped, e.g. "groq_timeout"; empty if not
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)  # who asked (empty on old rows)
     # Later days add new columns here (+ a new Alembic migration).

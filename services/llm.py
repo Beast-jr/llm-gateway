@@ -1,8 +1,9 @@
 import os
 import time
 
+import httpx
 from dotenv import load_dotenv
-from groq import AsyncGroq, GroqError
+from groq import APIConnectionError, APIStatusError, APITimeoutError, AsyncGroq, GroqError
 
 import config
 
@@ -12,7 +13,21 @@ _client: AsyncGroq | None = None
 
 
 class LLMError(Exception):
-    """Raised when the LLM provider fails. The route turns this into a 502."""
+    """Raised when an LLM provider fails. `reason` is a short code such as "groq_timeout" or "groq_error_401"."""
+
+    def __init__(self, message: str, reason: str = "error"):
+        super().__init__(message)
+        self.reason = reason
+
+
+def _groq_reason(e: GroqError) -> str:
+    if isinstance(e, APITimeoutError):  # (a kind of connection error, so check it first)
+        return "groq_timeout"
+    if isinstance(e, APIConnectionError):
+        return "groq_connection_error"
+    if isinstance(e, APIStatusError):  # the server answered with an error: 401, 429, 5xx...
+        return f"groq_error_{e.status_code}"
+    return "groq_error"
 
 
 def _get_client() -> AsyncGroq:
@@ -20,7 +35,11 @@ def _get_client() -> AsyncGroq:
     # (e.g. in tests) doesn't require a real API key.
     global _client
     if _client is None:
-        _client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
+        _client = AsyncGroq(
+            api_key=os.getenv("GROQ_API_KEY"),
+            timeout=httpx.Timeout(config.GROQ_TOTAL_TIMEOUT_SECONDS, connect=config.GROQ_CONNECT_TIMEOUT_SECONDS),
+            max_retries=0,  # no hidden retries: if Groq fails we want to switch to Gemini right away
+        )
     return _client
 
 
@@ -40,7 +59,7 @@ async def ask_llm(question: str) -> dict:
             max_completion_tokens=config.MAX_OUTPUT_TOKENS,
         )
     except GroqError as e:  # covers bad key, network errors, rate limits, etc.
-        raise LLMError(f"Groq request failed: {e}") from e
+        raise LLMError(f"Groq request failed: {e}", _groq_reason(e)) from e
     latency_ms = (time.perf_counter() - start) * 1000
 
     usage = response.usage

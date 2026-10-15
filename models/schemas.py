@@ -18,6 +18,8 @@ class ChatResponse(BaseModel):
     prompt_tokens: int
     completion_tokens: int
     latency_ms: float
+    provider: str  # who produced the answer: "groq", "gemini", or "cache"
+    fallback_reason: str | None = None  # why Gemini was used instead of Groq (null = Groq worked / cache hit)
     cache_hit: bool
     truncated: bool = False  # true = the answer hit the length limit and is cut off (never cached)
     cache_type: str | None = None  # "exact", "semantic", or null on a miss
