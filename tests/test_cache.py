@@ -64,6 +64,7 @@ def test_slow_redis_is_skipped(fake_llm, monkeypatch):
             await asyncio.sleep(1)
 
     monkeypatch.setattr(config, "REDIS_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(config, "BUDGET_TIMEOUT_SECONDS", 0.05)
     monkeypatch.setattr(services.cache, "_get_redis", lambda: SlowRedis())
     res = client.post("/chat", json={"question": "What is RAG?"})
 

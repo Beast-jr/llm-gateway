@@ -3,7 +3,7 @@ import logging
 import time
 
 import config
-from services import cache, embeddings, match_guard, semantic_cache
+from services import budget, cache, embeddings, match_guard, semantic_cache
 from services.llm import ask_llm, get_model
 
 logger = logging.getLogger(__name__)
@@ -51,11 +51,14 @@ def _is_reusable(question: str, match: dict | None) -> bool:
     return reason is None
 
 
-async def answer_question(question: str, use_semantic: bool = True, user_id: int | None = None) -> dict:
+async def answer_question(question: str, use_semantic: bool = True, user_id: int | None = None,
+                          daily_budget: int | None = None) -> dict:
     """The gateway's main flow: exact cache -> semantic cache -> LLM.
 
     use_semantic=False skips the semantic step (the exact cache still applies).
     user_id decides whose saved answers may be reused (see CACHE_SCOPE in config.py).
+    daily_budget is the user's token limit; cache hits cost 0 tokens so they are always allowed.
+    Raises budget.BudgetExceeded (route -> 429) before calling the LLM if the budget is used up.
     Later days add steps here (Gemini fallback) without touching the route.
     """
     model = get_model()
@@ -65,11 +68,28 @@ async def answer_question(question: str, use_semantic: bool = True, user_id: int
     def elapsed_ms() -> float:
         return round((time.perf_counter() - start) * 1000, 2)
 
+    # Ask Redis how much the user has used today, at the same time as the cache lookups below.
+    usage_task = asyncio.create_task(budget.get_used(user_id)) if user_id is not None else None
+
+    async def used_today() -> int | None:
+        """For a real Groq call: wait for the counter (up to BUDGET_TIMEOUT_SECONDS) so the budget check is not skipped."""
+        return await usage_task if usage_task is not None else None
+
+    async def used_today_quick() -> int | None:
+        """For free cache hits there is nothing to enforce, so don't make the user wait for the counter."""
+        if usage_task is None:
+            return None
+        try:
+            return await asyncio.wait_for(asyncio.shield(usage_task), config.REDIS_TIMEOUT_SECONDS)
+        except TimeoutError:
+            return None
+
     # 1. Exact cache: same (normalized) question asked before?
     cached = await cache.get_cached(question, model, scope)
     redis_ms = round((time.perf_counter() - start) * 1000)
     if cached is not None:
         logger.info("timing: redis=%sms -> exact hit", redis_ms)
+        used = await used_today_quick()
         return {
             **cached,
             "prompt_tokens": 0,  # we didn't pay Groq for this one
@@ -79,6 +99,9 @@ async def answer_question(question: str, use_semantic: bool = True, user_id: int
             "cache_type": "exact",
             "similarity": None,
             "matched_question": None,
+            "truncated": False,
+            "tokens_used_today": used,
+            "daily_budget": daily_budget,
         }
 
     # 2. Semantic cache: a *similar* question answered before? (embedded only once per request)
@@ -89,6 +112,7 @@ async def answer_question(question: str, use_semantic: bool = True, user_id: int
         logger.info("timing: redis=%sms embed=%sms db=%sms (- = did not finish)",
                     redis_ms, found.get("embed_ms", "-"), found.get("db_ms", "-"))
     if _is_reusable(question, match):
+        used = await used_today_quick()
         return {
             "answer": match["answer"],
             "model": model,
@@ -100,11 +124,31 @@ async def answer_question(question: str, use_semantic: bool = True, user_id: int
             "cache_type": "semantic",
             "similarity": round(match["similarity"], 4),
             "matched_question": match["question"],  # the saved question whose answer we reused
+            "truncated": False,
+            "tokens_used_today": used,
+            "daily_budget": daily_budget,
         }
 
-    # 3. Miss: ask the LLM (raises LLMError on failure -> route returns 502), then save it.
+    # 3. Miss: this one costs real tokens, so check the budget first (raises BudgetExceeded -> 429).
+    used = await used_today()
+    if daily_budget is not None:
+        budget.check(used, daily_budget)
+
+    # Ask the LLM (raises LLMError on failure -> route returns 502), then save the answer and count the tokens.
+    # We only know the tokens AFTER the answer, so one request can go a little over the budget.
     result = await ask_llm(question)
-    await cache.set_cached(question, model, result, scope)
+    tokens = result["prompt_tokens"] + result["completion_tokens"]
+    truncated = bool(result.get("truncated"))
+    if truncated:
+        logger.warning("Answer was cut off at the length limit (%s completion tokens); it will NOT be cached",
+                       result["completion_tokens"])
+    # A cut-off answer is never saved: the next person asking would get half an answer. It still costs tokens.
+    _, used_now = await asyncio.gather(
+        asyncio.sleep(0) if truncated else cache.set_cached(question, model, result, scope),
+        budget.add_usage(user_id, tokens) if user_id is not None else asyncio.sleep(0),
+    )
+    if used_now is None and used is not None:  # the counter write failed: best guess
+        used_now = used + tokens
     return {
         **result,
         "cache_hit": False,
@@ -112,12 +156,17 @@ async def answer_question(question: str, use_semantic: bool = True, user_id: int
         "matched_question": None,
         # Even on a miss, keep the nearest score: it shows near-misses in real traffic.
         "similarity": round(match["similarity"], 4) if match is not None else None,
+        "truncated": truncated,
+        "tokens_used_today": used_now,
+        "daily_budget": daily_budget,
         "_vector": found.get("vector"),  # reused for the semantic save, never sent to the user
     }
 
 
 async def remember_answer(question: str, result: dict, user_id: int | None = None) -> None:
     """Runs in the background AFTER the user has their answer."""
+    if result.get("truncated"):
+        return  # never keep a cut-off answer in the semantic cache either
     if result.get("cache_type") == "exact":
         return  # already stored when it was first answered
     if result.get("cache_type") == "semantic":

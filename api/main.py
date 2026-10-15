@@ -7,6 +7,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from models.schemas import ChatRequest, ChatResponse
 from services import cache, db, embeddings
 from services.auth import AuthUser, current_user
+from services.budget import BudgetExceeded
 from services.call_log import save_call
 from services.gateway import answer_question, remember_answer
 from services.llm import LLMError
@@ -42,7 +43,11 @@ def health():
 async def chat(req: ChatRequest, background_tasks: BackgroundTasks, user: AuthUser = Depends(current_user)):
     # Blank questions never reach here — Pydantic already returned 422.
     try:
-        result = await answer_question(req.question, use_semantic=req.semantic_cache, user_id=user.id)
+        result = await answer_question(req.question, use_semantic=req.semantic_cache, user_id=user.id,
+                                      daily_budget=user.daily_token_budget)
+    except BudgetExceeded as e:
+        # Over the daily limit: tell the caller when it resets. (Cached answers never reach here.)
+        raise HTTPException(status_code=429, detail=str(e), headers={"Retry-After": str(e.retry_after)})
     except LLMError as e:
         # The upstream provider failed: tell the caller clearly instead of crashing.
         raise HTTPException(status_code=502, detail=str(e))

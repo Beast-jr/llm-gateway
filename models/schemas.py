@@ -19,6 +19,9 @@ class ChatResponse(BaseModel):
     completion_tokens: int
     latency_ms: float
     cache_hit: bool
+    truncated: bool = False  # true = the answer hit the length limit and is cut off (never cached)
     cache_type: str | None = None  # "exact", "semantic", or null on a miss
     matched_question: str | None = None  # semantic hits only: the saved question whose answer we reused
+    tokens_used_today: int | None = None  # this user's tokens used today (UTC); null if the counter is unavailable
+    daily_budget: int | None = None  # this user's daily token limit
     similarity: float | None = None  # score of the nearest saved question (hit, or near-miss on a miss)

@@ -82,15 +82,25 @@ FastAPI · Postgres (Neon) + pgvector · Redis (Upstash) · Groq (main) + Gemini
   semantic step; similarity logged on every call (incl. near-misses); near-duplicates (>=0.99) not re-saved.
   Evidence: eval/cutoff_results.md, eval/question_pairs.csv + holdout_pairs.csv + holdout2_pairs.csv, scripts/tune_cutoff.py.
   Don't tune the cutoff further; check calls.similarity on real traffic after deploy.
-- [ ] Day 8 – API keys (IN PROGRESS: users table + migration 0005, gw_ keys stored as SHA-256 hash, Bearer auth on /chat → 401,
-  per-user cache scope via CACHE_SCOPE, user_id on calls + semantic_cache, 60s in-memory key cache, scripts/create_key.py)
-- [ ] Day 9 – Daily token budgets (Redis counter, 429)
+- [x] Day 8 – API keys — committed, verified (401 without key, 200 with key). services/auth.py, users table (migration 0005),
+  per-user cache scope via CACHE_SCOPE, user_id on calls + semantic_cache, 60s in-memory key cache, scripts/create_key.py
+- [ ] Day 9 – Daily token budgets (IN PROGRESS: services/budget.py, Redis counter budget:{user_id}:{UTC date} with 48h TTL, 429 + Retry-After
+  before Groq, cache hits free, response has tokens_used_today + daily_budget, fail OPEN if Redis is down)
 - [ ] Day 10 – Groq → Gemini fallback
 - [ ] Day 11 – GET /stats
 - [ ] Day 12 – Tests + CI (80%+ coverage)
 - [ ] Days 13–14 – Deploy, Locust, README
 
 Notes / numbers to remember:
+- Day 9 fixes: (1) budget counter read/write use BUDGET_TIMEOUT_SECONDS (4s), longer than the cache's 0.5s, because a slow read must not
+  silently skip the check; free cache hits don't wait for the counter (tokens_used_today may be null there). Still fail OPEN if Redis is down.
+  (2) Groq answers cut off by the length limit (finish_reason "length") come back with truncated=true and are NEVER saved to Redis or
+  semantic_cache (still logged and still counted in the budget). MAX_OUTPUT_TOKENS=4096 (was Groq's default ~2048; gpt-oss's hidden
+  reasoning tokens count too). Truncated rows already saved before this fix: semantic_cache rows with completion_tokens >= 2048.
+- Day 9 budgets: checked BEFORE calling Groq, counted AFTER (we only know the tokens afterwards), so one request (or a few at the same
+  moment) can overshoot a little. Cache hits cost 0 tokens: never blocked, never counted. Budget 0 = cache-only user. FAIL OPEN: if Redis
+  is down/slow we allow the request (log a warning) because blocking everyone whenever the counter is down is worse than some unmetered
+  calls, and Groq has its own rate limits. Budget changes in the users table take up to 60s (auth cache). Time comes from budget.utcnow().
 - Day 8 auth: services/auth.py. `Authorization: Bearer gw_...`; only the SHA-256 hash is stored (users table, migration 0005 also adds
   user_id to calls + semantic_cache). Key→user lookups cached in memory 60s (AUTH_CACHE_SECONDS), so deactivating a key can take up to 60s.
   CACHE_SCOPE="per_user" puts user id in the Redis key and filters the semantic lookup; old rows without user_id never match.

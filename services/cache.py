@@ -31,12 +31,12 @@ def _get_redis() -> Redis | None:
     return _redis
 
 
-async def _within_timeout(coro):
+async def _within_timeout(coro, timeout: float | None = None):
     """Like asyncio.wait_for, but a timeout does NOT cancel the work. A reconnect that is still
     in progress keeps going in the background, so the NEXT request finds a working connection."""
     task = asyncio.ensure_future(coro)
     task.add_done_callback(lambda t: t.cancelled() or t.exception())  # mark errors as "seen"
-    return await asyncio.wait_for(asyncio.shield(task), config.REDIS_TIMEOUT_SECONDS)
+    return await asyncio.wait_for(asyncio.shield(task), timeout or config.REDIS_TIMEOUT_SECONDS)
 
 
 async def warm_up() -> None:

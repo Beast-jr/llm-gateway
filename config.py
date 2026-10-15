@@ -5,9 +5,16 @@ PRICES_PER_MILLION = {
     "openai/gpt-oss-20b": {"input": 0.075, "output": 0.30},
 }
 
+# LLM answers
+MAX_OUTPUT_TOKENS = 4096  # longest answer we allow. You only pay for tokens actually produced; this is a ceiling.
+# (gpt-oss is a "thinking" model: its hidden reasoning tokens count too, so 2048 was cutting real answers off.)
+
 # Exact cache (Redis)
 CACHE_TTL_SECONDS = 24 * 60 * 60  # how long a saved answer is kept: 24 hours
 REDIS_TIMEOUT_SECONDS = 0.5  # if Redis takes longer than this, skip the cache and ask Groq
+# The budget counter gets longer: skipping it would let a user past their limit, and it only delays
+# requests that are about to wait seconds for Groq anyway. A brand-new Redis connection takes ~3s from India.
+BUDGET_TIMEOUT_SECONDS = 4.0
 
 # API keys
 AUTH_CACHE_SECONDS = 60  # remember a key->user lookup in memory this long (saves a DB query per request)

@@ -4,6 +4,8 @@ import time
 from dotenv import load_dotenv
 from groq import AsyncGroq, GroqError
 
+import config
+
 load_dotenv()  # read keys from .env into environment variables
 
 _client: AsyncGroq | None = None
@@ -35,12 +37,15 @@ async def ask_llm(question: str) -> dict:
         response = await _get_client().chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": question}],
+            max_completion_tokens=config.MAX_OUTPUT_TOKENS,
         )
     except GroqError as e:  # covers bad key, network errors, rate limits, etc.
         raise LLMError(f"Groq request failed: {e}") from e
     latency_ms = (time.perf_counter() - start) * 1000
 
     usage = response.usage
+    # "length" means the model hit the token limit and the answer stops mid-sentence.
+    truncated = response.choices[0].finish_reason == "length"
     return {
         "answer": response.choices[0].message.content or "",
         "model": response.model,
@@ -48,4 +53,5 @@ async def ask_llm(question: str) -> dict:
         "prompt_tokens": usage.prompt_tokens if usage else 0,
         "completion_tokens": usage.completion_tokens if usage else 0,
         "latency_ms": round(latency_ms, 2),
+        "truncated": truncated,
     }
