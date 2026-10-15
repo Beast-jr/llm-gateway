@@ -4,7 +4,8 @@ import logging
 from sqlalchemy import select
 
 from models.semantic_cache import SemanticCacheEntry
-from services import embeddings
+import config
+from services import embeddings, match_guard
 from services.db import get_session, retry_once_if_dropped
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,7 @@ def find_closest(vector: list[float], model: str) -> dict | None:
     if row is None:
         return None
     entry, dist = row
-    return {"answer": entry.answer, "similarity": 1 - float(dist)}
+    return {"question": entry.question, "answer": entry.answer, "similarity": 1 - float(dist)}
 
 
 async def save_entry(question: str, result: dict, vector: list[float] | None = None) -> None:
@@ -54,6 +55,12 @@ async def save_entry(question: str, result: dict, vector: list[float] | None = N
     try:
         if vector is None:
             vector = await embeddings.embed(question)
+        # Skip near-duplicates. Checked here (in the background, so it costs the user nothing),
+        # because the request's own lookup may have timed out and then knows nothing.
+        closest = await asyncio.to_thread(find_closest, vector, result["model"])
+        if (closest is not None and closest["similarity"] >= config.SEMANTIC_DUPLICATE_SIMILARITY
+                and match_guard.check_numbers(question, closest["question"]) is None):
+            return
         await asyncio.to_thread(retry_once_if_dropped, lambda: _insert(question, vector, result))  # DB call off the main thread
     except Exception:
         logger.exception("Could not save to semantic cache (the user still got their answer)")

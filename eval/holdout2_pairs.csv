@@ -1,0 +1,39 @@
+question_a,question_b,should_match,category
+How do I turn on Bluetooth on my phone?,How do I turn off Bluetooth on my phone?,no,opposite_action
+Is it better to exercise before eating or after eating?,Is it better to exercise after eating or before eating?,yes,paraphrase
+How do I find the minimum value in a list?,How do I find the maximum value in a list?,no,opposite_action
+How can I increase my website traffic?,How can I decrease my website traffic?,no,opposite_action
+How do I enable two-factor authentication?,How do I disable two-factor authentication?,no,opposite_action
+How do I convert Celsius to Fahrenheit?,How do I convert Fahrenheit to Celsius?,no,opposite_action
+How do I convert kilometers to miles?,How do I convert miles to kilometers?,no,opposite_action
+How many grams are in an ounce?,How many ounces are in a gram?,no,opposite_action
+How long is a marathon in kilometers?,How long is a marathon in miles?,no,unit_change
+How much is 5 dollars in rupees?,How much is 5 rupees in dollars?,no,unit_change
+What is the speed of light in meters per second?,What is the speed of light in miles per hour?,no,unit_change
+How do I write a unit test?,How do I write unit tests?,no,singular_plural
+What is a good way to learn a language?,What are good ways to learn a language?,no,singular_plural
+How do I fix a bug in my code?,How do I find all the bugs in my code?,no,scope_change
+Who is the youngest player in the team?,Who is the oldest player in the team?,no,opposite_action
+What are the pros of remote work?,What are the cons of remote work?,no,opposite_action
+Is coffee good for you?,Is coffee bad for you?,no,opposite_action
+How do I get a refund for my order?,How do I cancel my order?,no,related
+What is the plural of mouse?,What is the plural of goose?,no,entity_swap
+Translate hello into Spanish,Translate hello into French,no,entity_swap
+What is the difference between a virus and a bacterium?,What is the difference between a virus and a fungus?,no,entity_swap
+How do I bake a chocolate cake?,How do I bake a carrot cake?,no,entity_swap
+Who was the first person to walk on the moon?,Who was the first person to reach the summit of Everest?,no,unrelated
+How do I reset my router?,How can I restart my router?,yes,paraphrase
+What is the fastest way to learn guitar?,What's the quickest way to learn to play the guitar?,yes,paraphrase
+How do I lose weight safely?,What is a safe way to lose weight?,yes,paraphrase
+Why do we dream?,What is the reason people dream?,yes,paraphrase
+How do I write a good cover letter?,What makes a good cover letter and how do I write one?,yes,paraphrase
+What is the meaning of life?,What is life's meaning?,yes,paraphrase
+How do I change my password?,How can I change my password?,yes,paraphrase
+What time zone is London in?,Which time zone does London use?,yes,paraphrase
+How do I cook rice on the stove?,What is the way to cook rice on a stove?,yes,paraphrase
+How many continents are there?,What is the number of continents in the world?,yes,paraphrase
+What causes inflation?,Why does inflation happen?,yes,paraphrase
+How do I add a column in Excel?,How can I insert a new column in an Excel sheet?,yes,paraphrase
+What is the boiling point of water in Fahrenheit?,At what Fahrenheit temperature does water boil?,yes,paraphrase
+Can you recommend a good book on history?,Recommend me a good history book,yes,paraphrase
+How do I stop my dog from barking?,How can I train my dog to stop barking?,yes,paraphrase

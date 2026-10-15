@@ -1,0 +1,26 @@
+question_a,question_b,should_match,category
+How do I convert a string to an integer in Python?,What's the way to turn a string into an int in Python?,yes,paraphrase
+What is the boiling point of water?,At what temperature does water boil?,yes,paraphrase
+How do I create a virtual environment in Python?,How can I set up a Python virtual environment?,yes,paraphrase
+What is overfitting in machine learning?,Can you explain overfitting in machine learning?,yes,paraphrase
+How many days are in a leap year?,How many days does a leap year have?,yes,paraphrase
+Who is the president of the United States?,Who currently serves as president of the United States?,yes,paraphrase
+How do I check my Python version?,How can I find out which Python version I have?,yes,paraphrase
+What is a REST API?,Explain what a REST API is,yes,paraphrase
+How do I merge two dictionaries in Python?,How can I combine two dictionaries in Python?,yes,paraphrase
+What is the time complexity of binary search?,How fast is binary search in big O terms?,yes,paraphrase
+What is a GPU?,What is a graphics processing unit?,yes,acronym
+What does AWS stand for?,What is the full form of Amazon Web Services?,yes,acronym
+What is the capital of Peru?,What is the capital of Chile?,no,entity_swap
+how do I sort a list in haskell?,how do I sort a list in scala?,no,entity_swap
+What are the side effects of ibuprofen?,What are the side effects of paracetamol?,no,entity_swap
+How do I update Windows 10?,How do I update Windows 11?,no,number_year
+How many calories are in 100 grams of rice?,How many calories are in 200 grams of rice?,no,number_year
+Who won the Nobel Prize in Physics in 2019?,Who won the Nobel Prize in Physics in 2021?,no,number_year
+How do I zoom in on the map?,How do I zoom out on the map?,no,opposite_action
+How do I speed up my laptop?,How do I slow down my laptop?,no,opposite_action
+How do I mute the microphone?,How do I unmute the microphone?,no,opposite_action
+What is the tallest mountain in the world?,What is the shortest mountain in the world?,no,opposite_action
+What is a list in Python?,What is a dictionary in Python?,no,related
+What is supervised learning?,What is unsupervised learning?,no,related
+What is the time complexity of quicksort?,Who invented the telephone?,no,unrelated

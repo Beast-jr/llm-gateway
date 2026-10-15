@@ -9,6 +9,7 @@ NonBlankStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length
 
 class ChatRequest(BaseModel):
     question: NonBlankStr
+    semantic_cache: bool = True  # false = never reuse a similar question's answer (exact cache still applies)
 
 
 class ChatResponse(BaseModel):
@@ -19,4 +20,5 @@ class ChatResponse(BaseModel):
     latency_ms: float
     cache_hit: bool
     cache_type: str | None = None  # "exact", "semantic", or null on a miss
-    similarity: float | None = None  # how close the matched question was (semantic hits only)
+    matched_question: str | None = None  # semantic hits only: the saved question whose answer we reused
+    similarity: float | None = None  # score of the nearest saved question (hit, or near-miss on a miss)

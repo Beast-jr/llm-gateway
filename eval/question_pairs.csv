@@ -1,0 +1,48 @@
+question_a,question_b,should_match,category
+What is RAG?,Explain RAG to me,yes,paraphrase
+How do I reverse a list in Python?,What's the way to reverse a Python list?,yes,paraphrase
+What is the capital of France?,Which city is the capital of France?,yes,paraphrase
+How do I install Docker on Ubuntu?,What are the steps to install Docker on Ubuntu?,yes,paraphrase
+What is machine learning?,Can you explain what machine learning is?,yes,paraphrase
+How can I read a file in Python?,What is the way to read a file in Python?,yes,paraphrase
+What is the difference between a list and a tuple in Python?,How do lists and tuples differ in Python?,yes,paraphrase
+How do I center a div in CSS?,What is the way to center a div using CSS?,yes,paraphrase
+Why is the sky blue?,What makes the sky look blue?,yes,paraphrase
+How do I undo my last git commit?,How can I revert the most recent commit in git?,yes,paraphrase
+What is an API?,Explain what an API is,yes,paraphrase
+How do I make a POST request with Python requests?,How to send a POST request using the Python requests library?,yes,paraphrase
+What is RAG?,What is retrieval augmented generation?,yes,acronym
+What is NLP?,What is natural language processing?,yes,acronym
+What is CI/CD?,What is continuous integration and continuous delivery?,yes,acronym
+What does SQL stand for?,What does Structured Query Language mean?,yes,acronym
+Explain LLMs,Explain large language models,yes,acronym
+What is the capital of France?,What is the capital of Germany?,no,entity_swap
+What is the capital of Japan?,What is the capital of China?,no,entity_swap
+How do I reverse a list in Python?,How do I reverse a list in JavaScript?,no,entity_swap
+How do I install Docker on Ubuntu?,How do I install Docker on Windows?,no,entity_swap
+What is the latest version of Python?,What is the latest version of Java?,no,entity_swap
+Who wrote Hamlet?,Who wrote Macbeth?,no,entity_swap
+What is the population of India?,What is the population of Brazil?,no,entity_swap
+How do I read a file in Python?,How do I read a file in Go?,no,entity_swap
+How do I reverse a list in Python?,How do I sort a list in Python?,no,opposite_action
+How do I add an item to a list in Python?,How do I remove an item from a list in Python?,no,opposite_action
+How do I encrypt a file?,How do I decrypt a file?,no,opposite_action
+How do I install Node.js?,How do I uninstall Node.js?,no,opposite_action
+How do I stage a file in git?,How do I unstage a file in git?,no,opposite_action
+How do I open a port in the firewall?,How do I close a port in the firewall?,no,opposite_action
+What was the population of India in 2010?,What was the population of India in 2020?,no,number_year
+What is 15 percent of 200?,What is 25 percent of 200?,no,number_year
+Who won the FIFA World Cup in 2014?,Who won the FIFA World Cup in 2018?,no,number_year
+Give me 3 tips for studying,Give me 10 tips for studying,no,number_year
+How long does it take to walk 5 km?,How long does it take to walk 20 km?,no,number_year
+What happened in 1947?,What happened in 1857?,no,number_year
+What is RAG?,How do I build a RAG pipeline?,no,related
+What is RAG?,What is fine-tuning?,no,related
+What is machine learning?,What is deep learning?,no,related
+What is Docker?,What is Kubernetes?,no,related
+What is RAG?,What is Docker?,no,unrelated
+What is the capital of France?,How do I reverse a list in Python?,no,unrelated
+What is the best way to cook pasta?,How does a neural network learn?,no,unrelated
+Who painted the Mona Lisa?,How do I center a div in CSS?,no,unrelated
+What is the weather like in Mumbai?,What is a binary search tree?,no,unrelated
+Tell me a joke,What is the speed of light?,no,unrelated

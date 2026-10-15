@@ -3,7 +3,7 @@ import logging
 import time
 
 import config
-from services import cache, embeddings, semantic_cache
+from services import cache, embeddings, match_guard, semantic_cache
 from services.llm import ask_llm, get_model
 
 logger = logging.getLogger(__name__)
@@ -30,9 +30,21 @@ async def _try_semantic(question: str, model: str, found: dict) -> dict | None:
         return None
 
 
-async def answer_question(question: str) -> dict:
+def _is_reusable(question: str, match: dict | None) -> bool:
+    """Close enough in meaning (cutoff) AND the numbers/years agree (guard)?"""
+    if match is None or match["similarity"] < config.SEMANTIC_CUTOFF:
+        return False
+    reason = match_guard.check_numbers(question, match["question"])
+    if reason:
+        logger.info("Semantic match %.3f blocked by guard (%s): %r vs %r",
+                    match["similarity"], reason, question, match["question"])
+    return reason is None
+
+
+async def answer_question(question: str, use_semantic: bool = True) -> dict:
     """The gateway's main flow: exact cache -> semantic cache -> LLM.
 
+    use_semantic=False skips the semantic step (the exact cache still applies).
     Later days add steps here (Gemini fallback) without touching the route.
     """
     model = get_model()
@@ -54,14 +66,17 @@ async def answer_question(question: str) -> dict:
             "cache_hit": True,
             "cache_type": "exact",
             "similarity": None,
+            "matched_question": None,
         }
 
     # 2. Semantic cache: a *similar* question answered before? (embedded only once per request)
     found: dict = {}
-    match = await _try_semantic(question, model, found)
-    logger.info("timing: redis=%sms embed=%sms db=%sms (- = did not finish)",
-                redis_ms, found.get("embed_ms", "-"), found.get("db_ms", "-"))
-    if match is not None and match["similarity"] >= config.SEMANTIC_CUTOFF:
+    match = None
+    if use_semantic:  # the caller can opt out per request
+        match = await _try_semantic(question, model, found)
+        logger.info("timing: redis=%sms embed=%sms db=%sms (- = did not finish)",
+                    redis_ms, found.get("embed_ms", "-"), found.get("db_ms", "-"))
+    if _is_reusable(question, match):
         return {
             "answer": match["answer"],
             "model": model,
@@ -72,6 +87,7 @@ async def answer_question(question: str) -> dict:
             "cache_hit": True,
             "cache_type": "semantic",
             "similarity": round(match["similarity"], 4),
+            "matched_question": match["question"],  # the saved question whose answer we reused
         }
 
     # 3. Miss: ask the LLM (raises LLMError on failure -> route returns 502), then save it.
@@ -81,7 +97,9 @@ async def answer_question(question: str) -> dict:
         **result,
         "cache_hit": False,
         "cache_type": None,
-        "similarity": None,
+        "matched_question": None,
+        # Even on a miss, keep the nearest score: it shows near-misses in real traffic.
+        "similarity": round(match["similarity"], 4) if match is not None else None,
         "_vector": found.get("vector"),  # reused for the semantic save, never sent to the user
     }
 

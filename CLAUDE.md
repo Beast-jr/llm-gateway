@@ -72,10 +72,16 @@ FastAPI · Postgres (Neon) + pgvector · Redis (Upstash) · Groq (main) + Gemini
   `semantic_cache` table + HNSW cosine index (migration 0003), saved in background on a miss
   (gateway.remember_answer), scripts/similarity_check.py
   Days 4–5 committed; semantic_cache has 3 rows in Neon.
-- [ ] Day 6 – Semantic cache part 2: lookup by similarity (IN PROGRESS: exact → semantic → Groq in gateway.py,
-  SEMANTIC_CUTOFF=0.90 + 1s time limit in config.py, cache_type/similarity columns via migration 0004,
-  scripts/semantic_demo.py)
-- [ ] Day 7 – Semantic cache part 3: tune cutoff on 20 question pairs
+- [x] Day 6 – Semantic cache part 2: lookup by similarity — committed. exact → semantic → Groq in gateway.py,
+  SEMANTIC_CUTOFF + 1s time limit in config.py, cache_type/similarity columns (migration 0004), startup warm-up
+  (model+DB+Redis), reconnect/retry logic, scripts/semantic_demo.py
+- [x] Day 7 – Semantic cache part 3: cutoff tuning. FINAL DECISION: SEMANTIC_CUTOFF 0.96 + numbers-only guard
+  (services/match_guard.check_numbers). Tried score-only → word-list guard (overfit, caught by holdout) → Quora cross-encoder
+  verifier (services/verifier.py: eval only, NOT loaded by the server, +105MB RAM) — none reached zero wrong answers, verifier
+  didn't clearly win. Mitigations: /chat returns `matched_question`; request field `semantic_cache: false` opts out of the
+  semantic step; similarity logged on every call (incl. near-misses); near-duplicates (>=0.99) not re-saved.
+  Evidence: eval/cutoff_results.md, eval/question_pairs.csv + holdout_pairs.csv + holdout2_pairs.csv, scripts/tune_cutoff.py.
+  Don't tune the cutoff further; check calls.similarity on real traffic after deploy.
 - [ ] Days 8–9 – API keys + token budgets
 - [ ] Day 10 – Groq → Gemini fallback
 - [ ] Day 11 – GET /stats
@@ -83,6 +89,9 @@ FastAPI · Postgres (Neon) + pgvector · Redis (Upstash) · Groq (main) + Gemini
 - [ ] Days 13–14 – Deploy, Locust, README
 
 Notes / numbers to remember:
+- Day 7 outcome (3 pair sets: train 47, holdout 25, holdout2 38): no approach got zero wrong answers. Shipped 0.96 + numbers guard:
+  train 5/17 reused · 0 wrong, holdout 3/12 · 1, holdout2 6/16 · 5 (reused/wrong). App RAM ~260MB (365MB if verifier were loaded).
+  Residual risk: swapped-order / unit / plural pairs score 0.99+. Our sets are adversarial; real traffic should be far better.
 - Day 6 latency: from India, Neon (us-east-2) and Upstash are each ~250ms per round trip; a NEW connection ~3s.
   Fixes: warm-up of model+DB+Redis at startup, no pool_pre_ping, AUTOCOMMIT read for the lookup (DB lookup ~990 → ~260ms).
   Locally an exact hit ≈ 270ms, a semantic hit ≈ 540ms: that is distance, not code. Take README numbers from the DEPLOYED

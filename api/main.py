@@ -41,7 +41,7 @@ def health():
 async def chat(req: ChatRequest, background_tasks: BackgroundTasks):
     # Blank questions never reach here — Pydantic already returned 422.
     try:
-        result = await answer_question(req.question)
+        result = await answer_question(req.question, use_semantic=req.semantic_cache)
     except LLMError as e:
         # The upstream provider failed: tell the caller clearly instead of crashing.
         raise HTTPException(status_code=502, detail=str(e))
