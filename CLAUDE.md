@@ -59,8 +59,8 @@ FastAPI · Postgres (Neon) + pgvector · Redis (Upstash) · Groq (main) + Gemini
 - Tests must mock LLM calls (no real API calls, no credits spent).
 - Don't `git commit`; Jahnavi commits. Just list which files changed.
 - End each session with a 3-line plain-English summary.
-- `requirements.txt` must be UTF-8 (PowerShell `pip freeze > file` writes UTF-16; use
-  `pip freeze | Out-File -Encoding utf8 requirements.txt` instead).
+- `requirements.txt` must be UTF-8 without a BOM (PowerShell `pip freeze > file` writes UTF-16, and `Out-File -Encoding utf8` adds a BOM).
+  Regenerate it with Python (see Day 12 note): `pip freeze`, drop colorama/win32_setctime, write with encoding="utf-8".
 
 ## Progress
 - [x] Day 1 – Setup + GET /health
@@ -88,12 +88,18 @@ FastAPI · Postgres (Neon) + pgvector · Redis (Upstash) · Groq (main) + Gemini
   before Groq, cache hits free, response has tokens_used_today + daily_budget, fail OPEN if Redis is down)
 - [x] Day 10 – Groq → Gemini fallback — committed, verified (fake Groq key → provider gemini, groq_error_401; real key → groq).
   services/gemini.py, breaker.py, gateway._ask_with_fallback, migration 0006
-- [ ] Day 11 – GET /stats (IN PROGRESS: services/stats.py, aggregates only, ?days=7 ?mine=true; calls.saved_cost_usd + calls.truncated +
-  index on created_at via migration 0007; scripts/traffic.py using DEV_API_KEY)
-- [ ] Day 12 – Tests + CI (80%+ coverage)
+- [x] Day 11 – GET /stats — committed, verified (100 requests, 76% hit rate, saved $0.0043 vs spent $0.0013, cache 4.8x faster locally).
+  services/stats.py, migration 0007, scripts/traffic.py
+- [ ] Day 12 – Tests + CI (BUILT, waiting for the first green run on GitHub Actions: pytest-cov 97%, 80% gate, ci.yml, README badge)
 - [ ] Days 13–14 – Deploy, Locust, README
 
 Notes / numbers to remember:
+- Day 12 CI: .github/workflows/ci.yml (push + PR, ubuntu, Python 3.13, pip cache, `pytest --cov --cov-fail-under=80`, coverage table on the run summary,
+  offline `alembic upgrade head --sql` migration check). Coverage config in .coveragerc (api/ services/ models/ only). Coverage 97% (172 tests);
+  services/verifier.py is only 53% because loading the real model needs a download (it is eval-only). CI has NO secrets and no .env; HF_HUB_OFFLINE=1.
+  Verified in a clean copy with no .env/.cache and outside-network access blocked: 172 passed, 0 network attempts. requirements.txt: written as UTF-8
+  WITHOUT a BOM, with Windows-only colorama/win32_setctime dropped (pip adds them itself on Windows); includes pytest-cov. Every pin has a
+  Linux cp313 wheel (checked with pip --dry-run --platform manylinux). README coverage badge is typed by hand.
 - Day 11 /stats: services/stats.py. Aggregates only (never selects question/answer). Rolling window of ?days (default 7, max 365) ending now (UTC);
   ?mine=true = caller only, otherwise EVERY user's numbers are combined (any key holder can see them; add an admin flag later if that matters).
   Counts/sums in SQL (GROUP BY), median/p95 in Python (nearest-rank). "exact hit" = any cache hit that isn't semantic (old rows with no cache_type too);

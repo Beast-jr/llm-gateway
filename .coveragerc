@@ -1,0 +1,11 @@
+# Which code counts toward coverage: the app itself. Not tests, scripts (run by hand), or migrations.
+[run]
+source =
+    api
+    services
+    models
+branch = False
+
+[report]
+show_missing = True
+skip_empty = True

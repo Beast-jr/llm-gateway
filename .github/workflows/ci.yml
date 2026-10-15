@@ -1,0 +1,44 @@
+name: CI
+
+# Runs on every push and every pull request.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Tests use fakes for everything (database, Redis, Groq, Gemini, the embedding model), so CI has NO secrets
+      # and NO .env. This makes any accidental attempt to download a model fail loudly instead of passing silently.
+      HF_HUB_OFFLINE: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip  # re-uses downloaded packages between runs (keyed on requirements.txt)
+
+      - name: Install requirements
+        run: pip install -r requirements.txt
+
+      - name: Run tests (fails if coverage is under 80%)
+        run: python -m pytest --cov --cov-report=term-missing --cov-fail-under=80
+
+      - name: Show the coverage table on the run's summary page
+        if: always()
+        run: |
+          if [ -f .coverage ]; then
+            echo "### Test coverage" >> "$GITHUB_STEP_SUMMARY"
+            coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Check that the database migrations build (offline, no database needed)
+        env:
+          DATABASE_URL: postgresql://user:password@localhost/not_a_real_database  # only used to pick the SQL dialect
+        run: alembic upgrade head --sql > /dev/null

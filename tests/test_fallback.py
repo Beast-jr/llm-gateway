@@ -7,6 +7,7 @@ from google.genai import errors, types
 
 import config
 import services.breaker
+import services.budget
 import services.gateway
 import services.gemini
 import services.llm
@@ -339,3 +340,39 @@ def test_ask_gemini_times_out(monkeypatch):
     with pytest.raises(LLMError) as slow:
         asyncio.run(services.gemini.ask_gemini("hi"))
     assert slow.value.reason == "gemini_timeout"
+
+
+# ---------- surprises ----------
+
+def test_unexpected_crash_inside_groq_still_falls_back(fake_gemini, monkeypatch):
+    async def explodes(question):
+        raise RuntimeError("a bug nobody expected")
+
+    monkeypatch.setattr(services.gateway, "ask_llm", explodes)
+    fake_gemini.working = True
+    body = ask().json()
+    assert body["provider"] == "gemini" and body["fallback_reason"] == "groq_error"
+
+
+def test_real_ask_llm_turns_groq_sdk_errors_into_reason_codes(monkeypatch):
+    import httpx
+    import groq as groq_sdk
+
+    request = httpx.Request("POST", "https://api.groq.com/x")
+
+    async def create(**kwargs):
+        raise groq_sdk.AuthenticationError("bad key", response=httpx.Response(401, request=request), body=None)
+
+    fake = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    monkeypatch.setattr(services.llm, "_get_client", lambda: fake)
+    with pytest.raises(LLMError) as failure:
+        asyncio.run(services.llm.ask_llm("hi"))
+    assert failure.value.reason == "groq_error_401"
+
+
+def test_if_the_counter_write_fails_usage_is_estimated(groq, monkeypatch):
+    async def write_fails(user_id, tokens):
+        return None
+
+    monkeypatch.setattr(services.budget, "add_usage", write_fails)
+    assert ask().json()["tokens_used_today"] == 12  # 0 used before + this answer's 5 + 7 tokens

@@ -21,6 +21,12 @@ from services.auth import AuthUser, current_user
 from services.db import Base
 from services.llm import LLMError
 
+# The autouse fixtures below replace these with fakes. A few tests need the REAL functions
+# (to test their own logic with fake inputs), so we keep a reference before any fixture runs.
+REAL_GET_REDIS = services.cache._get_redis
+REAL_EMBED = services.embeddings.embed
+REAL_FIND_CLOSEST = services.semantic_cache.find_closest
+
 FAKE_RESULT = {
     "answer": "RAG means Retrieval-Augmented Generation.",
     "model": "openai/gpt-oss-20b",
