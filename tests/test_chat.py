@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-import api.main
+import services.gateway
 from api.main import app
 from services.llm import LLMError
 
@@ -15,6 +15,7 @@ def test_chat_success(fake_llm):
     assert body["answer"].startswith("RAG")
     assert body["prompt_tokens"] == 5
     assert body["completion_tokens"] == 7
+    assert body["cache_hit"] is False
 
 
 def test_chat_empty_question_returns_422():
@@ -27,7 +28,7 @@ def test_chat_groq_failure_returns_502(monkeypatch):
     async def failing_ask_llm(question):
         raise LLMError("Groq request failed: service unavailable")
 
-    monkeypatch.setattr(api.main, "ask_llm", failing_ask_llm)
+    monkeypatch.setattr(services.gateway, "ask_llm", failing_ask_llm)
     res = client.post("/chat", json={"question": "Hello?"})
 
     assert res.status_code == 502

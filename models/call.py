@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, Text, func
+from sqlalchemy import DateTime, String, Text, false, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from services.db import Base
@@ -21,4 +21,5 @@ class Call(Base):
     completion_tokens: Mapped[int]
     latency_ms: Mapped[float]
     cost_usd: Mapped[float]
-    # Later days add new columns here (+ a new Alembic migration), e.g. cache_hit on Day 4.
+    cache_hit: Mapped[bool] = mapped_column(default=False, server_default=false())
+    # Later days add new columns here (+ a new Alembic migration).

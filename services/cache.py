@@ -1,0 +1,61 @@
+import asyncio
+import hashlib
+import json
+import logging
+import os
+
+from dotenv import load_dotenv
+from redis.asyncio import Redis
+
+import config
+
+load_dotenv()
+logger = logging.getLogger(__name__)
+
+_redis: Redis | None = None
+
+
+def _get_redis() -> Redis | None:
+    # Connect only when first needed; no REDIS_URL means "no cache" (not an error).
+    global _redis
+    if _redis is None and os.getenv("REDIS_URL"):
+        _redis = Redis.from_url(os.environ["REDIS_URL"], decode_responses=True)
+    return _redis
+
+
+def normalize(question: str) -> str:
+    """'  What is   RAG? ' -> 'what is rag?' so tiny differences don't miss the cache."""
+    return " ".join(question.lower().split())
+
+
+def make_key(question: str, model: str) -> str:
+    # The model is part of the key: a different model should give a fresh answer.
+    digest = hashlib.sha256(f"{model}|{normalize(question)}".encode()).hexdigest()
+    return f"chat:{digest}"
+
+
+async def get_cached(question: str, model: str) -> dict | None:
+    """Return the saved result, or None on a miss OR if Redis is down/slow."""
+    client = _get_redis()
+    if client is None:
+        return None
+    try:
+        raw = await asyncio.wait_for(client.get(make_key(question, model)), config.REDIS_TIMEOUT_SECONDS)
+    except Exception as e:  # down, slow (TimeoutError), bad URL... never break /chat
+        logger.warning("Redis read failed, skipping cache: %r", e)
+        return None
+    return json.loads(raw) if raw else None
+
+
+async def set_cached(question: str, model: str, result: dict) -> None:
+    """Save a result with an expiry. Failures are logged and ignored."""
+    client = _get_redis()
+    if client is None:
+        return
+    try:
+        await asyncio.wait_for(
+            client.set(make_key(question, model), json.dumps(result), ex=config.CACHE_TTL_SECONDS),
+            config.REDIS_TIMEOUT_SECONDS,
+        )
+    except Exception as e:
+        logger.warning("Redis write failed, answer not cached: %r", e)

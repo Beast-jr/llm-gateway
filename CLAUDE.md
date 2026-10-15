@@ -45,7 +45,12 @@ FastAPI · Postgres (Neon) + pgvector · Redis (Upstash) · Groq (main) + Gemini
   `alembic revision --autogenerate -m "..."`, review the file, `alembic upgrade head`.
 - DB driver: SQLAlchemy 2.x + psycopg v3 (sync). Chosen because it accepts Neon's `?sslmode=require`
   as-is (asyncpg rejects it) and avoids psycopg-async's Windows event-loop issue.
-- Prices for cost_usd live in `config.py` (PRICES_PER_MILLION).
+- Prices for cost_usd live in `config.py` (PRICES_PER_MILLION), plus cache TTL and Redis timeout.
+- Request flow: route (api/main.py) → `services/gateway.answer_question()` (cache → LLM) → background `save_call()`.
+  New steps (semantic cache, Gemini fallback) go in gateway.py. Tests patch `services.gateway.ask_llm`.
+- Redis/DB failures must never break /chat: log a warning and carry on.
+- Embeddings: fastembed (ONNX, no PyTorch, for Render 512MB). Model loaded lazily once; embed() via asyncio.to_thread;
+  vectors normalized. Tests use an autouse fake embedder (tests/conftest.py), never the real model.
 
 ## Rules
 - **NEVER print, read aloud, or commit the contents of `.env`.**
@@ -60,9 +65,14 @@ FastAPI · Postgres (Neon) + pgvector · Redis (Upstash) · Groq (main) + Gemini
 ## Progress
 - [x] Day 1 – Setup + GET /health
 - [x] Day 2 – POST /chat → Groq (services/llm.py, models/schemas.py, tests/test_chat.py) — committed, works in /docs
-- [x] Day 3 – Neon + Alembic + call logging (psycopg v3 sync driver, `calls` table, cost from config.py, saved in a background task)
-- [ ] Day 4 – Exact cache (Redis)
-- [ ] Days 5–7 – Semantic cache
+- [x] Day 3 – Neon + Alembic + call logging (psycopg v3 sync driver, `calls` table, cost from config.py, saved in a background task) — committed, verified 5 rows in Neon
+- [x] Day 4 – Exact cache (Redis): services/cache.py (SHA-256 of normalized question + model, TTL in config.py),
+  flow in services/gateway.py, cache_hit column (migration 0002), fakeredis in tests — committed, verified 1954ms miss → 22ms hit
+- [x] Day 5 – Semantic cache part 1: services/embeddings.py (fastembed, BAAI/bge-small-en-v1.5, 384 dims),
+  `semantic_cache` table + HNSW cosine index (migration 0003), saved in background on a miss
+  (gateway.remember_answer), scripts/similarity_check.py
+- [ ] Day 6 – Semantic cache part 2: lookup by similarity
+- [ ] Day 7 – Semantic cache part 3: tune cutoff on 20 question pairs
 - [ ] Days 8–9 – API keys + token budgets
 - [ ] Day 10 – Groq → Gemini fallback
 - [ ] Day 11 – GET /stats
@@ -70,4 +80,7 @@ FastAPI · Postgres (Neon) + pgvector · Redis (Upstash) · Groq (main) + Gemini
 - [ ] Days 13–14 – Deploy, Locust, README
 
 Notes / numbers to remember:
--
+- Day 4: exact cache 1954ms miss → 22ms hit.
+- Day 5 similarity (bge-small): paraphrases 0.91–0.95; related-but-different 0.47–0.78; unrelated 0.32–0.52.
+  Acronym vs full name ("RAG" vs "retrieval augmented generation") only 0.50 — the model doesn't know the acronym.
+  Embedding ~9ms/question on laptop; model load ~25s first time (incl. download), cached in .cache/.

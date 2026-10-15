@@ -22,9 +22,14 @@ def _get_client() -> AsyncGroq:
     return _client
 
 
+def get_model() -> str:
+    """The Groq model we ask (also used in the cache key)."""
+    return os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
+
+
 async def ask_llm(question: str) -> dict:
     """Send one question to Groq and return the answer plus usage info."""
-    model = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
+    model = get_model()
     start = time.perf_counter()
     try:
         response = await _get_client().chat.completions.create(

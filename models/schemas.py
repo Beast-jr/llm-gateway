@@ -17,3 +17,4 @@ class ChatResponse(BaseModel):
     prompt_tokens: int
     completion_tokens: int
     latency_ms: float
+    cache_hit: bool

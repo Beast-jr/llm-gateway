@@ -33,6 +33,7 @@ def save_call(question: str, result: dict) -> None:
                 completion_tokens=result["completion_tokens"],
                 latency_ms=result["latency_ms"],
                 cost_usd=calculate_cost(result["model"], result["prompt_tokens"], result["completion_tokens"]),
+                cache_hit=result["cache_hit"],  # on a hit, tokens are 0 so cost is 0 too
             ))
             session.commit()
     except Exception:
