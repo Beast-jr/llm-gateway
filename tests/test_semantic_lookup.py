@@ -47,7 +47,7 @@ def test_exactly_at_cutoff_is_a_hit(fake_llm, fake_lookup):
 
 
 def test_lookup_error_still_returns_200(fake_llm, monkeypatch):
-    def broken(vector, model):
+    def broken(vector, model, user_id=None):
         raise ConnectionError("database is down")
 
     monkeypatch.setattr("services.semantic_cache.find_closest", broken)
@@ -60,7 +60,7 @@ def test_lookup_error_still_returns_200(fake_llm, monkeypatch):
 
 def test_lookup_timeout_still_returns_200(fake_llm, monkeypatch):
     monkeypatch.setattr(config, "SEMANTIC_TIMEOUT_SECONDS", 0.05)
-    monkeypatch.setattr("services.semantic_cache.find_closest", lambda v, m: time.sleep(0.5))
+    monkeypatch.setattr("services.semantic_cache.find_closest", lambda v, m, u=None: time.sleep(0.5))
     res = client.post("/chat", json={"question": "What is RAG?"})
 
     assert res.status_code == 200
@@ -157,7 +157,7 @@ def test_near_duplicate_is_not_saved(fake_llm, fake_lookup, test_db, monkeypatch
 def test_duplicate_skipped_even_if_request_lookup_failed(fake_llm, test_db, monkeypatch):
     calls = []
 
-    def flaky(vector, model):
+    def flaky(vector, model, user_id=None):
         calls.append(1)
         if len(calls) == 1:
             raise ConnectionError("lookup failed during the request")

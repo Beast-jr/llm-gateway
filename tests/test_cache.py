@@ -77,6 +77,6 @@ def test_answer_saved_with_ttl(fake_llm, fake_redis):
 
     async def ttl():
         r = services.cache._get_redis()
-        return await r.ttl(make_key("What is RAG?", "openai/gpt-oss-20b"))
+        return await r.ttl(make_key("What is RAG?", "openai/gpt-oss-20b", "user:1"))  # the test user is #1
 
     assert 0 < asyncio.run(ttl()) <= config.CACHE_TTL_SECONDS

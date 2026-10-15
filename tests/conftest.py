@@ -7,11 +7,15 @@ from sqlalchemy.pool import StaticPool
 import config
 import models.call  # noqa: F401  (registers the tables)
 import models.semantic_cache  # noqa: F401
+import models.user  # noqa: F401
+import services.auth
 import services.cache
 import services.call_log
 import services.embeddings
 import services.gateway
 import services.semantic_cache
+from api.main import app
+from services.auth import AuthUser, current_user
 from services.db import Base
 
 FAKE_RESULT = {
@@ -39,8 +43,19 @@ def test_db(monkeypatch):
     TestSession = sessionmaker(bind=engine)
     monkeypatch.setattr(services.call_log, "get_session", TestSession)
     monkeypatch.setattr(services.semantic_cache, "get_session", TestSession)
+    monkeypatch.setattr(services.auth, "get_session", TestSession)
     yield TestSession
     engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def default_user():
+    """Most tests are not about login, so /chat sees a ready-made user. tests/test_auth.py removes this."""
+    services.auth._cache.clear()
+    app.dependency_overrides[current_user] = lambda: AuthUser(1, "tester", 10000, True)
+    yield
+    app.dependency_overrides.pop(current_user, None)
+    services.auth._cache.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -74,9 +89,11 @@ def fake_lookup(monkeypatch):
     class FakeLookup:
         match = None
         calls = 0
+        last_user_id = None  # whose rows the lookup was limited to
 
-    def fake_find_closest(vector, model):
+    def fake_find_closest(vector, model, user_id=None):
         FakeLookup.calls += 1
+        FakeLookup.last_user_id = user_id
         return FakeLookup.match
 
     FakeLookup.calls = 0

@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, Index, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 import config
@@ -21,6 +21,8 @@ class SemanticCacheEntry(Base):
     model: Mapped[str] = mapped_column(String(100))
     prompt_tokens: Mapped[int]
     completion_tokens: Mapped[int]
+    # Whose question this was. With CACHE_SCOPE = "per_user" only the same user can match it.
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
 
     __table_args__ = (
         # HNSW index: lets Postgres find the closest vectors fast, without checking every row.

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, Text, false, func
+from sqlalchemy import DateTime, ForeignKey, String, Text, false, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from services.db import Base
@@ -24,4 +24,5 @@ class Call(Base):
     cache_hit: Mapped[bool] = mapped_column(default=False, server_default=false())
     cache_type: Mapped[str | None] = mapped_column(String(20))  # "exact", "semantic" or None (miss)
     similarity: Mapped[float | None]  # nearest saved question's score (semantic hit, or near-miss); empty if none
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)  # who asked (empty on old rows)
     # Later days add new columns here (+ a new Alembic migration).

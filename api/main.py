@@ -2,10 +2,11 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 
 from models.schemas import ChatRequest, ChatResponse
 from services import cache, db, embeddings
+from services.auth import AuthUser, current_user
 from services.call_log import save_call
 from services.gateway import answer_question, remember_answer
 from services.llm import LLMError
@@ -38,14 +39,14 @@ def health():
     return {"status": "ok"}
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(req: ChatRequest, background_tasks: BackgroundTasks):
+async def chat(req: ChatRequest, background_tasks: BackgroundTasks, user: AuthUser = Depends(current_user)):
     # Blank questions never reach here — Pydantic already returned 422.
     try:
-        result = await answer_question(req.question, use_semantic=req.semantic_cache)
+        result = await answer_question(req.question, use_semantic=req.semantic_cache, user_id=user.id)
     except LLMError as e:
         # The upstream provider failed: tell the caller clearly instead of crashing.
         raise HTTPException(status_code=502, detail=str(e))
     # These run AFTER the answer is sent, so they never slow down /chat (and never raise).
-    background_tasks.add_task(save_call, req.question, result)
-    background_tasks.add_task(remember_answer, req.question, result)
+    background_tasks.add_task(save_call, req.question, result, user.id)
+    background_tasks.add_task(remember_answer, req.question, result, user.id)
     return result

@@ -9,6 +9,13 @@ PRICES_PER_MILLION = {
 CACHE_TTL_SECONDS = 24 * 60 * 60  # how long a saved answer is kept: 24 hours
 REDIS_TIMEOUT_SECONDS = 0.5  # if Redis takes longer than this, skip the cache and ask Groq
 
+# API keys
+AUTH_CACHE_SECONDS = 60  # remember a key->user lookup in memory this long (saves a DB query per request)
+
+# Cache privacy: "per_user" = one user's saved answers are never shown to another user.
+# "shared" = everyone shares one cache (cheaper, but only OK if answers are not private).
+CACHE_SCOPE = "per_user"
+
 # Semantic cache: embeddings (fastembed, runs locally, no API calls)
 EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 EMBEDDING_DIM = 384  # bge-small makes vectors of 384 numbers; must match the DB column

@@ -82,13 +82,22 @@ FastAPI · Postgres (Neon) + pgvector · Redis (Upstash) · Groq (main) + Gemini
   semantic step; similarity logged on every call (incl. near-misses); near-duplicates (>=0.99) not re-saved.
   Evidence: eval/cutoff_results.md, eval/question_pairs.csv + holdout_pairs.csv + holdout2_pairs.csv, scripts/tune_cutoff.py.
   Don't tune the cutoff further; check calls.similarity on real traffic after deploy.
-- [ ] Days 8–9 – API keys + token budgets
+- [ ] Day 8 – API keys (IN PROGRESS: users table + migration 0005, gw_ keys stored as SHA-256 hash, Bearer auth on /chat → 401,
+  per-user cache scope via CACHE_SCOPE, user_id on calls + semantic_cache, 60s in-memory key cache, scripts/create_key.py)
+- [ ] Day 9 – Daily token budgets (Redis counter, 429)
 - [ ] Day 10 – Groq → Gemini fallback
 - [ ] Day 11 – GET /stats
 - [ ] Day 12 – Tests + CI (80%+ coverage)
 - [ ] Days 13–14 – Deploy, Locust, README
 
 Notes / numbers to remember:
+- Day 8 auth: services/auth.py. `Authorization: Bearer gw_...`; only the SHA-256 hash is stored (users table, migration 0005 also adds
+  user_id to calls + semantic_cache). Key→user lookups cached in memory 60s (AUTH_CACHE_SECONDS), so deactivating a key can take up to 60s.
+  CACHE_SCOPE="per_user" puts user id in the Redis key and filters the semantic lookup; old rows without user_id never match.
+  Tests: autouse fixture in conftest fakes a logged-in user #1; tests/test_auth.py removes it to test real login.
+  Make a key: `python -m scripts.create_key --name test --budget 500`. DB down during login → 503 (never a free pass).
+  Known limit: pgvector HNSW + WHERE user_id=... filters AFTER the index search, so with many users a user's own near rows can be
+  missed (look at hnsw.iterative_scan / per-user partial indexes if it ever matters).
 - Day 7 outcome (3 pair sets: train 47, holdout 25, holdout2 38): no approach got zero wrong answers. Shipped 0.96 + numbers guard:
   train 5/17 reused · 0 wrong, holdout 3/12 · 1, holdout2 6/16 · 5 (reused/wrong). App RAM ~260MB (365MB if verifier were loaded).
   Residual risk: swapped-order / unit / plural pairs score 0.99+. Our sets are adversarial; real traffic should be far better.

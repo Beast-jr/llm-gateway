@@ -6,6 +6,7 @@ from alembic import context
 
 import models.call  # noqa: F401  (makes the tables known to Base.metadata)
 import models.semantic_cache  # noqa: F401
+import models.user  # noqa: F401
 from services.db import Base, get_database_url
 
 config = context.config

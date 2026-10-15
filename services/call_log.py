@@ -16,7 +16,7 @@ def calculate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> fl
     return (prompt_tokens * price["input"] + completion_tokens * price["output"]) / 1_000_000
 
 
-def save_call(question: str, result: dict) -> None:
+def save_call(question: str, result: dict, user_id: int | None = None) -> None:
     """Save one /chat call to the database.
 
     Never raises: if the database is down, we log the error and move on,
@@ -36,6 +36,7 @@ def save_call(question: str, result: dict) -> None:
                 cache_hit=result["cache_hit"],  # on a hit, tokens are 0 so cost is 0 too
                 cache_type=result.get("cache_type"),
                 similarity=result.get("similarity"),
+                user_id=user_id,
             ))
             session.commit()
     except Exception:

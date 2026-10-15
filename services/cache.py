@@ -52,33 +52,34 @@ def normalize(question: str) -> str:
     return " ".join(question.lower().split())
 
 
-def make_key(question: str, model: str) -> str:
+def make_key(question: str, model: str, scope: str | None = None) -> str:
     # The model is part of the key: a different model should give a fresh answer.
-    digest = hashlib.sha256(f"{model}|{normalize(question)}".encode()).hexdigest()
+    # So is the scope (e.g. "user:5"): the same question from two users gets two separate entries.
+    digest = hashlib.sha256(f"{model}|{scope or 'shared'}|{normalize(question)}".encode()).hexdigest()
     return f"chat:{digest}"
 
 
-async def get_cached(question: str, model: str) -> dict | None:
+async def get_cached(question: str, model: str, scope: str | None = None) -> dict | None:
     """Return the saved result, or None on a miss OR if Redis is down/slow."""
     client = _get_redis()
     if client is None:
         return None
     try:
-        raw = await _within_timeout(client.get(make_key(question, model)))
+        raw = await _within_timeout(client.get(make_key(question, model, scope)))
     except Exception as e:  # down, slow (TimeoutError), bad URL... never break /chat
         logger.warning("Redis read failed, skipping cache: %r", e)
         return None
     return json.loads(raw) if raw else None
 
 
-async def set_cached(question: str, model: str, result: dict) -> None:
+async def set_cached(question: str, model: str, result: dict, scope: str | None = None) -> None:
     """Save a result with an expiry. Failures are logged and ignored."""
     client = _get_redis()
     if client is None:
         return
     try:
         await _within_timeout(
-            client.set(make_key(question, model), json.dumps(result), ex=config.CACHE_TTL_SECONDS)
+            client.set(make_key(question, model, scope), json.dumps(result), ex=config.CACHE_TTL_SECONDS)
         )
     except Exception as e:
         logger.warning("Redis write failed, answer not cached: %r", e)
