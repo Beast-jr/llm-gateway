@@ -56,7 +56,14 @@ def find_closest(vector: list[float], model: str, user_id: int | None = None) ->
     if row is None:
         return None
     entry, dist = row
-    return {"question": entry.question, "answer": entry.answer, "similarity": 1 - float(dist)}
+    return {
+        "question": entry.question,
+        "answer": entry.answer,
+        "similarity": 1 - float(dist),
+        # what the saved answer originally cost, so a hit can report the money it saved
+        "prompt_tokens": entry.prompt_tokens,
+        "completion_tokens": entry.completion_tokens,
+    }
 
 
 async def save_entry(question: str, result: dict, vector: list[float] | None = None,

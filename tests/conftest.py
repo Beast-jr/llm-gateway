@@ -15,6 +15,7 @@ import services.call_log
 import services.embeddings
 import services.gateway
 import services.semantic_cache
+import services.stats
 from api.main import app
 from services.auth import AuthUser, current_user
 from services.db import Base
@@ -46,6 +47,7 @@ def test_db(monkeypatch):
     monkeypatch.setattr(services.call_log, "get_session", TestSession)
     monkeypatch.setattr(services.semantic_cache, "get_session", TestSession)
     monkeypatch.setattr(services.auth, "get_session", TestSession)
+    monkeypatch.setattr(services.stats, "get_session", TestSession)
     yield TestSession
     engine.dispose()
 

@@ -86,13 +86,21 @@ FastAPI · Postgres (Neon) + pgvector · Redis (Upstash) · Groq (main) + Gemini
   per-user cache scope via CACHE_SCOPE, user_id on calls + semantic_cache, 60s in-memory key cache, scripts/create_key.py
 - [ ] Day 9 – Daily token budgets (IN PROGRESS: services/budget.py, Redis counter budget:{user_id}:{UTC date} with 48h TTL, 429 + Retry-After
   before Groq, cache hits free, response has tokens_used_today + daily_budget, fail OPEN if Redis is down)
-- [ ] Day 10 – Groq → Gemini fallback (IN PROGRESS: services/gemini.py (google-genai), fallback + circuit breaker in gateway.py/services/breaker.py,
-  fallback_reason column (migration 0006), provider + fallback_reason in the response)
-- [ ] Day 11 – GET /stats
+- [x] Day 10 – Groq → Gemini fallback — committed, verified (fake Groq key → provider gemini, groq_error_401; real key → groq).
+  services/gemini.py, breaker.py, gateway._ask_with_fallback, migration 0006
+- [ ] Day 11 – GET /stats (IN PROGRESS: services/stats.py, aggregates only, ?days=7 ?mine=true; calls.saved_cost_usd + calls.truncated +
+  index on created_at via migration 0007; scripts/traffic.py using DEV_API_KEY)
 - [ ] Day 12 – Tests + CI (80%+ coverage)
 - [ ] Days 13–14 – Deploy, Locust, README
 
 Notes / numbers to remember:
+- Day 11 /stats: services/stats.py. Aggregates only (never selects question/answer). Rolling window of ?days (default 7, max 365) ending now (UTC);
+  ?mine=true = caller only, otherwise EVERY user's numbers are combined (any key holder can see them; add an admin flag later if that matters).
+  Counts/sums in SQL (GROUP BY), median/p95 in Python (nearest-rank). "exact hit" = any cache hit that isn't semantic (old rows with no cache_type too);
+  provider is "cache" for every hit. saved_cost_usd = cost of the ORIGINAL answer a hit reused, computed at hit time (exact: tokens kept in the
+  Redis entry; semantic: tokens from the semantic row; a semantic hit's Redis copy keeps the ORIGINAL tokens so later exact hits still report savings).
+  Rows from before migration 0007 have saved 0 / truncated false. Semantic rows are stored under the primary model name, so a saved Gemini answer is
+  priced at the Groq rate (small approximation). scripts/traffic.py needs DEV_API_KEY in .env and a big enough budget (stops on 429).
 - Day 10 fallback: gateway._ask_with_fallback(). Groq first; Gemini only on a Groq error / no connection in 3s / no answer in 25s
   (GROQ_* timeouts in config.py; Groq SDK max_retries=0 so there are no hidden retries). A long but healthy answer never triggers it.
   Circuit breaker (services/breaker.py, in memory): 3 Groq failures in a row -> skip Groq 60s (fallback_reason "circuit_open"), then try again;

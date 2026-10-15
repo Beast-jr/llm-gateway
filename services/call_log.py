@@ -37,6 +37,8 @@ def save_call(question: str, result: dict, user_id: int | None = None) -> None:
                 cache_type=result.get("cache_type"),
                 similarity=result.get("similarity"),
                 fallback_reason=result.get("fallback_reason"),
+                saved_cost_usd=result.get("saved_cost_usd", 0.0),
+                truncated=bool(result.get("truncated")),
                 user_id=user_id,
             ))
             session.commit()

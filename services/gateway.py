@@ -4,6 +4,7 @@ import time
 
 import config
 from services import breaker, budget, cache, embeddings, match_guard, semantic_cache
+from services.call_log import calculate_cost
 from services.gemini import ask_gemini
 from services.llm import LLMError, ask_llm, get_model
 
@@ -142,6 +143,9 @@ async def answer_question(question: str, use_semantic: bool = True, user_id: int
             "truncated": False,
             "tokens_used_today": used,
             "daily_budget": daily_budget,
+            # The money this hit saved = what the saved answer cost when it was first produced.
+            "saved_cost_usd": calculate_cost(cached.get("model", model), cached.get("prompt_tokens", 0),
+                                             cached.get("completion_tokens", 0)),
         }
 
     # 2. Semantic cache: a *similar* question answered before? (embedded only once per request)
@@ -168,6 +172,9 @@ async def answer_question(question: str, use_semantic: bool = True, user_id: int
             "truncated": False,
             "tokens_used_today": used,
             "daily_budget": daily_budget,
+            "saved_cost_usd": calculate_cost(model, match.get("prompt_tokens", 0), match.get("completion_tokens", 0)),
+            # Kept so the exact-cache copy of this answer still remembers what it originally cost:
+            "_original_tokens": (match.get("prompt_tokens", 0), match.get("completion_tokens", 0)),
         }
 
     # 3. Miss: this one costs real tokens, so check the budget first (raises BudgetExceeded -> 429).
@@ -198,6 +205,7 @@ async def answer_question(question: str, use_semantic: bool = True, user_id: int
         # Even on a miss, keep the nearest score: it shows near-misses in real traffic.
         "similarity": round(match["similarity"], 4) if match is not None else None,
         "truncated": truncated,
+        "saved_cost_usd": 0.0,
         "tokens_used_today": used_now,
         "daily_budget": daily_budget,
         "_vector": found.get("vector"),  # reused for the semantic save, never sent to the user
@@ -212,8 +220,11 @@ async def remember_answer(question: str, result: dict, user_id: int | None = Non
         return  # already stored when it was first answered
     if result.get("cache_type") == "semantic":
         # Next time this exact wording is asked, Redis answers it directly.
+        prompt_tokens, completion_tokens = result["_original_tokens"]
         await cache.set_cached(question, result["model"], {
-            k: result[k] for k in ("answer", "model", "provider", "prompt_tokens", "completion_tokens", "latency_ms")
+            **{k: result[k] for k in ("answer", "model", "provider", "latency_ms")},
+            "prompt_tokens": prompt_tokens,  # the ORIGINAL cost (the response itself shows 0), for saved-money stats
+            "completion_tokens": completion_tokens,
         }, _cache_scope(user_id))
         return
     # Fresh LLM answer: store it with its embedding so similar questions can match it.

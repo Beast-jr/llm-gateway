@@ -2,13 +2,14 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
 
-from models.schemas import ChatRequest, ChatResponse
+from models.schemas import ChatRequest, ChatResponse, StatsResponse
 from services import cache, db, embeddings
 from services.auth import AuthUser, current_user
 from services.budget import BudgetExceeded
 from services.call_log import save_call
+from services.stats import compute_stats
 from services.gateway import answer_question, remember_answer
 from services.llm import LLMError
 
@@ -55,3 +56,17 @@ async def chat(req: ChatRequest, background_tasks: BackgroundTasks, user: AuthUs
     background_tasks.add_task(save_call, req.question, result, user.id)
     background_tasks.add_task(remember_answer, req.question, result, user.id)
     return result
+
+
+@app.get("/stats", response_model=StatsResponse)
+def stats(
+    days: int = Query(7, ge=1, le=365, description="Look back this many days (rolling window, UTC)."),
+    mine: bool = Query(False, description="true = only your own requests; false = everyone's, combined."),
+    user: AuthUser = Depends(current_user),
+):
+    """Numbers only (hit rates, speed, cost, money saved). Never any question or answer text."""
+    try:
+        return compute_stats(days, user.id if mine else None)
+    except Exception:
+        logger.exception("Could not compute /stats")
+        raise HTTPException(status_code=503, detail="Stats are temporarily unavailable. Please try again.")
