@@ -16,7 +16,8 @@ def _get_model():
         if _model is None:
             from fastembed import TextEmbedding  # imported here so tests never load it
 
-            _model = TextEmbedding(model_name=config.EMBEDDING_MODEL, cache_dir=config.EMBEDDING_CACHE_DIR)
+            _model = TextEmbedding(model_name=config.EMBEDDING_MODEL, cache_dir=config.EMBEDDING_CACHE_DIR,
+                                  threads=config.EMBEDDING_THREADS)
     return _model
 
 

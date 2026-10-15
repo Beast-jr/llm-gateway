@@ -1,0 +1,35 @@
+# Render "Blueprint": describes the service so Render can create it for you.
+# New Blueprint on Render -> pick this repo -> Render reads this file and asks for the secret values below.
+# (The manual dashboard steps do the same thing; use whichever you prefer.)
+services:
+  - type: web
+    name: llm-gateway
+    runtime: python  # which Python: the .python-version file in the repo root (3.13)
+    plan: free  # 512 MB RAM, 0.1 CPU, sleeps after 15 minutes without traffic
+    region: ohio  # next to the Neon database (us-east-2)
+
+    # Build: install packages, then download the embedding model into .cache/fastembed (inside the project),
+    # so a cold start does not have to download it. The folder is part of the build, so it survives sleep/wake.
+    buildCommand: pip install -r requirements.txt && python -m scripts.download_model
+
+    # Start: listen on all addresses and on the port Render gives us. HF_HUB_OFFLINE=1 = never call Hugging Face at
+    # runtime (the model is already on disk), so a Hugging Face outage cannot slow or break a cold start.
+    startCommand: HF_HUB_OFFLINE=1 uvicorn api.main:app --host 0.0.0.0 --port $PORT
+
+    healthCheckPath: /health
+    autoDeployTrigger: checksPass  # deploy only after the GitHub Actions tests pass
+
+    envVars:
+      # sync: false = Render asks you for the value once and keeps it secret. Never put real values in this file.
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-20b  # not a secret

@@ -1,11 +1,13 @@
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
 
+import config
 from models.schemas import ChatRequest, ChatResponse, StatsResponse
-from services import cache, db, embeddings
+from services import cache, db, embeddings, gemini
 from services.auth import AuthUser, current_user
 from services.budget import BudgetExceeded
 from services.call_log import save_call
@@ -17,21 +19,35 @@ logging.basicConfig(level=logging.INFO)  # so our timing lines show up in the se
 logger = logging.getLogger(__name__)
 
 
+async def _warm_up(name: str, work) -> None:
+    """Run one start-up step with a time limit. Never raises."""
+    started = time.perf_counter()
+    try:
+        await asyncio.wait_for(work, config.STARTUP_WARMUP_TIMEOUT_SECONDS)
+    except TimeoutError:
+        logger.error("Warm-up of %s did not finish within %ss; starting anyway", name, config.STARTUP_WARMUP_TIMEOUT_SECONDS)
+    except Exception as e:
+        logger.error("Could not warm up %s: %r", name, e)
+    else:
+        logger.info("startup: %s ready in %.1fs", name, time.perf_counter() - started)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Runs once when the server starts: load the model and open the DB + Redis connections
-    # (all three are slow the first time). If one fails, the server still starts and that
-    # part is just skipped, like any other failure.
-    steps = {
-        "embedding model": embeddings.warm_up(),
-        "database": asyncio.to_thread(db.warm_up),
-        "redis": cache.warm_up(),
-    }
-    results = await asyncio.gather(*steps.values(), return_exceptions=True)
-    for name, result in zip(steps, results):
-        if isinstance(result, Exception):
-            logger.error("Could not warm up %s: %r", name, result)
+    # (all three are slow the first time, so we do them now, in parallel, before the first user arrives).
+    # If one fails or takes too long, the server still starts and that part is just skipped.
+    started = time.perf_counter()
+    await asyncio.gather(
+        _warm_up("embedding model", embeddings.warm_up()),
+        _warm_up("database", asyncio.to_thread(db.warm_up)),
+        _warm_up("redis", cache.warm_up()),
+    )
+    logger.info("startup: ready to accept requests after %.1fs", time.perf_counter() - started)
+    # Not needed until Groq fails, so load Google's SDK in the background instead of delaying the first user.
+    background = asyncio.create_task(asyncio.to_thread(gemini.preload))
     yield
+    background.cancel()
 
 
 app = FastAPI(title="LLM Gateway", lifespan=lifespan)

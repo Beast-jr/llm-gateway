@@ -1,3 +1,12 @@
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv()  # so values in .env (like EMBEDDING_CACHE_DIR) are visible here too
+
+BASE_DIR = Path(__file__).resolve().parent  # the project folder
+
 # Prices in US dollars per 1 MILLION tokens, per model.
 # Source: third-party price trackers (Oct 2026). Double-check https://groq.com/pricing
 # and edit these numbers if Groq changes them.
@@ -37,8 +46,14 @@ CACHE_SCOPE = "per_user"
 
 # Semantic cache: embeddings (fastembed, runs locally, no API calls)
 EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
+EMBEDDING_THREADS = 1  # one CPU thread: for a model this small it is faster (~40ms vs ~90ms) and kinder to a small server
 EMBEDDING_DIM = 384  # bge-small makes vectors of 384 numbers; must match the DB column
-EMBEDDING_CACHE_DIR = ".cache/fastembed"  # where the downloaded model is kept (git-ignored)
+# Where the downloaded embedding model is kept (git-ignored). On Render the model is downloaded into this folder during
+# the BUILD (scripts/download_model.py), so the running server never has to download it. Override with the env var.
+EMBEDDING_CACHE_DIR = os.getenv("EMBEDDING_CACHE_DIR") or str(BASE_DIR / ".cache" / "fastembed")
+# Startup warm-up (model + database + Redis) may take at most this long per step. After that the server starts anyway,
+# so a slow or unreachable service can never stop it from opening its port. (Render free tier has only 0.1 CPU.)
+STARTUP_WARMUP_TIMEOUT_SECONDS = 60
 
 # Semantic cache: lookup
 SEMANTIC_CUTOFF = 0.96  # fallback after the verifier did not clearly win (see eval/cutoff_results.md); numbers guard is also on

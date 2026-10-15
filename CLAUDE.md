@@ -90,10 +90,22 @@ FastAPI · Postgres (Neon) + pgvector · Redis (Upstash) · Groq (main) + Gemini
   services/gemini.py, breaker.py, gateway._ask_with_fallback, migration 0006
 - [x] Day 11 – GET /stats — committed, verified (100 requests, 76% hit rate, saved $0.0043 vs spent $0.0013, cache 4.8x faster locally).
   services/stats.py, migration 0007, scripts/traffic.py
-- [ ] Day 12 – Tests + CI (BUILT, waiting for the first green run on GitHub Actions: pytest-cov 97%, 80% gate, ci.yml, README badge)
-- [ ] Days 13–14 – Deploy, Locust, README
+- [x] Day 12 – Tests + CI — committed, CI green on GitHub (172 tests, 97% coverage, 80% gate)
+- [ ] Days 13–14 – Deploy, Locust, README (Day 13 IN PROGRESS: render.yaml, scripts/download_model.py, EMBEDDING_CACHE_DIR env var, bounded startup warm-up)
 
 Notes / numbers to remember:
+- Infra regions: Neon, Upstash Redis (moved to Ohio, us-east-2, same REDIS_URL) and Render (Ohio) are all together. From India each hop is still ~250ms,
+  but on Render they should be single-digit ms, so take README latency numbers from the deployed service.
+- Day 13 deploy (Render free: 512 MB RAM, 0.1 CPU, sleeps after 15 min idle, ~1 min wake, ephemeral disk, health check = 2xx within 5s).
+  render.yaml (Blueprint: ohio, free, autoDeployTrigger checksPass, secrets sync:false) + .python-version "3.13" (Render's default for new services is 3.14!).
+  Build: `pip install -r requirements.txt && python -m scripts.download_model` (model goes to EMBEDDING_CACHE_DIR, default <project>/.cache/fastembed,
+  override with the env var). Start: `HF_HUB_OFFLINE=1 uvicorn api.main:app --host 0.0.0.0 --port $PORT`. Env vars: DATABASE_URL, REDIS_URL,
+  GROQ_API_KEY, GEMINI_API_KEY, GEMINI_MODEL (+ GROQ_MODEL, in render.yaml). Optional: EMBEDDING_CACHE_DIR. Render sets PORT itself.
+  Measured on the real server (Windows laptop, real Neon/Redis/Groq): RAM ~290 MB after startup, PEAK ~311-328 MB after requests (limit 512).
+  (One stray 862 MB reading came from my first faulty measurement script; not reproduced in 5 clean runs. Check Render's Metrics tab after deploy.)
+  Startup: imports ~3s + warm-up (model ~2s, DB 5.7s from India, Redis ~1s) in parallel; each step is capped (STARTUP_WARMUP_TIMEOUT_SECONDS=60) so
+  the port always opens; uvicorn opens the port only AFTER warm-up, so the first request after a wake is already warm. google.genai (0.6s import) is
+  loaded in the background after startup. Embedding uses 1 thread (EMBEDDING_THREADS): ~40ms vs ~90ms per question locally.
 - Day 12 CI: .github/workflows/ci.yml (push + PR, ubuntu, Python 3.13, pip cache, `pytest --cov --cov-fail-under=80`, coverage table on the run summary,
   offline `alembic upgrade head --sql` migration check). Coverage config in .coveragerc (api/ services/ models/ only). Coverage 97% (172 tests);
   services/verifier.py is only 53% because loading the real model needs a download (it is eval-only). CI has NO secrets and no .env; HF_HUB_OFFLINE=1.

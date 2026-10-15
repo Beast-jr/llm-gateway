@@ -93,15 +93,15 @@ def test_model_is_loaded_once_from_config(monkeypatch):
     loads = []
 
     class FakeTextEmbedding:
-        def __init__(self, model_name, cache_dir):
-            loads.append((model_name, cache_dir))
+        def __init__(self, model_name, cache_dir, threads):
+            loads.append((model_name, cache_dir, threads))
 
     monkeypatch.setitem(sys.modules, "fastembed", SimpleNamespace(TextEmbedding=FakeTextEmbedding))
     monkeypatch.setattr(services.embeddings, "_model", None)
 
     first = services.embeddings._get_model()
     assert services.embeddings._get_model() is first
-    assert loads == [(config.EMBEDDING_MODEL, config.EMBEDDING_CACHE_DIR)]  # loaded exactly once
+    assert loads == [(config.EMBEDDING_MODEL, config.EMBEDDING_CACHE_DIR, config.EMBEDDING_THREADS)]  # loaded exactly once
 
 
 def test_embedding_warm_up_loads_the_model(monkeypatch):
@@ -174,3 +174,49 @@ def test_login_cache_is_emptied_when_it_gets_too_big(monkeypatch):
         assert asyncio.run(services.auth.authenticate(key)) is not None
     assert len(services.auth._cache) <= 2
     assert services.auth.hash_key(keys[-1]) in services.auth._cache  # the newest one is still remembered
+
+
+# ---------- deploy support ----------
+
+def test_a_warm_up_that_hangs_cannot_stop_the_server_from_starting(monkeypatch, caplog):
+    import time
+
+    async def never_finishes():
+        await asyncio.sleep(30)
+
+    monkeypatch.setattr(config, "STARTUP_WARMUP_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr(services.embeddings, "warm_up", never_finishes)
+    monkeypatch.setattr(services.cache, "warm_up", lambda: asyncio.sleep(0))
+    monkeypatch.setattr(services.db, "warm_up", lambda: None)
+
+    started = time.perf_counter()
+    with TestClient(app) as running:
+        assert running.get("/health").status_code == 200
+    assert time.perf_counter() - started < 5  # gave up after 0.1s instead of waiting 30s
+    assert "Warm-up of embedding model did not finish" in caplog.text
+
+
+def test_embedding_cache_folder_can_be_set_with_an_environment_variable(monkeypatch):
+    import importlib
+    from pathlib import Path
+
+    monkeypatch.setenv("EMBEDDING_CACHE_DIR", "/opt/render/project/src/.cache/fastembed")
+    try:
+        importlib.reload(config)
+        assert config.EMBEDDING_CACHE_DIR == "/opt/render/project/src/.cache/fastembed"
+    finally:
+        monkeypatch.delenv("EMBEDDING_CACHE_DIR")
+        importlib.reload(config)
+    assert Path(config.EMBEDDING_CACHE_DIR).is_absolute()  # the default no longer depends on where you start the server
+
+
+def test_download_model_script_loads_the_model_through_the_same_code_as_the_server(monkeypatch, capsys):
+    import scripts.download_model as download
+
+    monkeypatch.setattr(download, "embed_many", lambda texts: [[0.0] * config.EMBEDDING_DIM])
+    download.main()
+    assert "model ready" in capsys.readouterr().out
+
+    monkeypatch.setattr(download, "embed_many", lambda texts: [[0.0] * 3])
+    with pytest.raises(SystemExit):
+        download.main()  # a wrong-sized model must fail the build, not the first user request

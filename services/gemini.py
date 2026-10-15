@@ -8,21 +8,31 @@ import os
 import time
 
 from dotenv import load_dotenv
-from google import genai
-from google.genai import errors, types
 
 import config
 from services.llm import LLMError
 
 load_dotenv()
 
-_client: genai.Client | None = None
+_client = None  # a google.genai Client, created on first use
 
 
-def _get_client() -> genai.Client:
+def preload() -> None:
+    """Import Google's SDK (about 0.6s on a fast laptop, much more on a small server). It is only needed when Groq fails, so
+    the server does this in the background AFTER it is ready, instead of making every cold start wait for it."""
+    try:
+        import google.genai  # noqa: F401
+    except Exception:
+        pass  # not fatal: ask_gemini will try again when it is actually needed
+
+
+def _get_client():
     # Create the client only when first needed, so importing this file (e.g. in tests) needs no key.
     global _client
     if _client is None:
+        from google import genai
+        from google.genai import types
+
         _client = genai.Client(
             api_key=os.getenv("GEMINI_API_KEY"),
             http_options=types.HttpOptions(timeout=int(config.GEMINI_TIMEOUT_SECONDS * 1000)),  # milliseconds
@@ -36,6 +46,8 @@ def get_gemini_model() -> str:
 
 async def ask_gemini(question: str) -> dict:
     """Send one question to Gemini and return the answer plus usage info (same shape as ask_llm)."""
+    from google.genai import errors, types
+
     model = get_gemini_model()
     start = time.perf_counter()
     try:
